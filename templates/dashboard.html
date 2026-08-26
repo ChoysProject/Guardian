@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% set title = "현황" %}
+{% set heading = "감시 현황" %}
+{% set icon = "activity" %}
+{% block actions %}
+<form method="post" action="/collect">
+  <button class="btn btn-primary" type="submit"><i class="me-1" data-feather="refresh-cw"></i>지금 수집·분석</button>
+</form>
+{% endblock %}
+{% block header %}
+<header class="page-header page-header-dark bg-gradient-primary-to-secondary pb-10">
+  <div class="container-xl px-4">
+    <div class="page-header-content pt-4">
+      <div class="row align-items-center justify-content-between">
+        <div class="col-auto mt-4">
+          <h1 class="page-header-title">
+            감시 현황
+          </h1>
+          <div class="page-header-subtitle">서버 로그 이상징후와 일일 보고서</div>
+        </div>
+        <div class="col-12 col-xl-auto mt-4">
+          <form method="post" action="/collect">
+            <button class="btn btn-light" type="submit">지금 수집·분석</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+{% block content_wrap_class %}mt-n10{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-6 col-xl-3 mb-4">
+    <div class="card bg-primary text-white h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="me-3">
+            <div class="text-white-75 small">서버</div>
+            <div class="text-lg fw-bold">{{ counts.servers }}</div>
+          </div>
+          <i class="feather-xl text-white-50" data-feather="server"></i>
+        </div>
+      </div>
+      <div class="card-footer d-flex align-items-center justify-content-between small">
+        <a class="text-white stretched-link" href="/servers">서버 관리</a>
+        <div class="text-white"><i data-feather="arrow-right"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6 col-xl-3 mb-4">
+    <div class="card bg-danger text-white h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="me-3">
+            <div class="text-white-75 small">ERROR</div>
+            <div class="text-lg fw-bold">{{ counts.errors }}</div>
+          </div>
+          <i class="feather-xl text-white-50" data-feather="alert-octagon"></i>
+        </div>
+      </div>
+      <div class="card-footer d-flex align-items-center justify-content-between small">
+        <a class="text-white stretched-link" href="/findings">징후 보기</a>
+        <div class="text-white"><i data-feather="arrow-right"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6 col-xl-3 mb-4">
+    <div class="card bg-warning text-white h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="me-3">
+            <div class="text-white-75 small">Finding</div>
+            <div class="text-lg fw-bold">{{ counts.findings }}</div>
+          </div>
+          <i class="feather-xl text-white-50" data-feather="alert-triangle"></i>
+        </div>
+      </div>
+      <div class="card-footer d-flex align-items-center justify-content-between small">
+        <a class="text-white stretched-link" href="/findings">목록</a>
+        <div class="text-white"><i data-feather="arrow-right"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6 col-xl-3 mb-4">
+    <div class="card bg-success text-white h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="me-3">
+            <div class="text-white-75 small">보고서</div>
+            <div class="text-lg fw-bold">{{ counts.reports }}</div>
+          </div>
+          <i class="feather-xl text-white-50" data-feather="file-text"></i>
+        </div>
+      </div>
+      <div class="card-footer d-flex align-items-center justify-content-between small">
+        <a class="text-white stretched-link" href="/reports">보고서</a>
+        <div class="text-white"><i data-feather="arrow-right"></i></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-xl-8 mb-4">
+    <div class="card h-100">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span>실시간 추이</span>
+        <div class="dropdown">
+          <button class="btn trend-gear" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="추이 설정">⚙</button>
+          <div class="dropdown-menu dropdown-menu-end p-3 trend-settings">
+            <div class="small text-muted mb-2">표시 레벨</div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="trend-error" data-trend-level="error">
+              <label class="form-check-label" for="trend-error">ERROR</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="trend-warn" data-trend-level="warn">
+              <label class="form-check-label" for="trend-warn">WARN</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="trend-info" data-trend-level="info">
+              <label class="form-check-label" for="trend-info">INFO</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="trend-debug" data-trend-level="debug">
+              <label class="form-check-label" for="trend-debug">DEBUG</label>
+            </div>
+            <div class="small text-muted mt-3 mb-2">구간</div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="trend-range" id="trend-hour" value="hour">
+              <label class="form-check-label" for="trend-hour">시간별</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="trend-range" id="trend-day" value="day">
+              <label class="form-check-label" for="trend-day">일자별</label>
+            </div>
+            <button class="btn btn-sm btn-primary w-100 mt-3" type="button" id="trend-apply">적용</button>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="chart-area"><canvas id="chartRealtimeTrend" width="100%" height="30"></canvas></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-4 mb-4">
+    <div class="card h-100">
+      <div class="card-header">심각도 비율</div>
+      <div class="card-body">
+        <div class="chart-pie"><canvas id="chartSeverity" width="100%" height="50"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-xl-6 mb-4">
+    <div class="card h-100">
+      <div class="card-header">서버별 징후</div>
+      <div class="card-body">
+        <div class="chart-bar"><canvas id="chartServers" width="100%" height="30"></canvas></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-6 mb-4">
+    <div class="card h-100">
+      <div class="card-header">서버 상태</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="text-nowrap">
+              <tr><th>이름</th><th>수집기</th><th>상태</th></tr>
+            </thead>
+            <tbody>
+            {% for server in servers %}
+              <tr>
+                <td>{{ server.name }}</td>
+                <td>{{ server.collector_type }}</td>
+                <td>
+                  {% if server.last_error %}
+                    <span class="badge bg-danger-soft text-danger">오류</span>
+                  {% elif server.enabled %}
+                    <span class="badge bg-success-soft text-success">활성</span>
+                  {% else %}
+                    <span class="badge bg-light text-muted">중지</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="3" class="text-muted">등록된 서버가 없습니다.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">최근 징후</div>
+  <div class="card-body p-0">
+    {% if findings %}
+    <div class="table-responsive scroll-panel">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>심각도</th><th>호스트</th><th>시그니처</th><th>건수</th><th>플러그인</th></tr>
+        </thead>
+        <tbody>
+        {% for item in findings %}
+          <tr>
+            <td>
+              {% if item.severity == 'error' %}<span class="badge bg-danger">{{ item.severity }}</span>
+              {% elif item.severity == 'warn' %}<span class="badge bg-warning">{{ item.severity }}</span>
+              {% else %}<span class="badge bg-secondary">{{ item.severity }}</span>{% endif %}
+            </td>
+            <td>{{ item.host }}</td>
+            <td><a href="/findings/{{ item.id }}"><code>{{ item.signature }}</code></a></td>
+            <td>{{ item.count }}</td>
+            <td>{{ item.plugin }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-muted">아직 Finding이 없습니다. 수집을 실행하세요.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if runs %}
+<div class="card mb-4">
+  <div class="card-header">최근 수집</div>
+  <div class="card-body scroll-panel">
+    {% for run in runs %}
+      <div class="small text-muted mb-2">{{ run.started_at | ts }} · 서버 {{ run.servers }} · 라인 {{ run.lines }} · 신규 Finding {{ run.findings }}</div>
+      {% if run.error %}<pre class="guardian-log text-danger">{{ run.error }}</pre>{% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/Chart.min.js"></script>
+<script src="/static/js/guardian-charts.js"></script>
+{% endblock %}

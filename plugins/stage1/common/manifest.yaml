@@ -1,0 +1,15 @@
+name: common
+stage: 1
+version: "1.0"
+type: python
+enabled: true
+description: >
+  모든 서버 공통. ERROR/WARN 집계, INFO/DEBUG 는 많이 쌓일 때만,
+  짧은 구간에 ERROR/WARN 이 몰리면 burst 로 표시한다.
+  서버 고유 에러코드(EAI 채널, MCI 매핑 등)는 Stage 2 로 보낸다.
+targets: ["*"]
+config:
+  info_min_count: 20
+  debug_min_count: 50
+  burst_window_seconds: 60
+  burst_threshold: 8

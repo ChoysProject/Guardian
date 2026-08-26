@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% set title = "징후 상세" %}
+{% set heading = finding.signature %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-6 mb-4">
+    <div class="card h-100">
+      <div class="card-header">속성</div>
+      <div class="card-body">
+        <div class="row gx-3">
+          <div class="col-sm-4 text-muted small mb-2">서버</div>
+          <div class="col-sm-8 mb-2">{{ server.name if server else finding.server_id }}</div>
+          <div class="col-sm-4 text-muted small mb-2">호스트</div>
+          <div class="col-sm-8 mb-2">{{ finding.host }}</div>
+          <div class="col-sm-4 text-muted small mb-2">심각도</div>
+          <div class="col-sm-8 mb-2">
+            {% if finding.severity == 'error' %}<span class="badge bg-danger">{{ finding.severity }}</span>
+            {% elif finding.severity == 'warn' %}<span class="badge bg-warning">{{ finding.severity }}</span>
+            {% else %}<span class="badge bg-secondary">{{ finding.severity }}</span>{% endif %}
+          </div>
+          <div class="col-sm-4 text-muted small mb-2">건수</div>
+          <div class="col-sm-8 mb-2">{{ finding.count }}</div>
+          <div class="col-sm-4 text-muted small mb-2">플러그인</div>
+          <div class="col-sm-8 mb-2">{{ finding.plugin }}</div>
+          <div class="col-sm-4 text-muted small mb-2">시각</div>
+          <div class="col-sm-8 mb-2">{{ finding.occurred_at | ts }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6 mb-4">
+    <div class="card h-100">
+      <div class="card-header">AI 해석</div>
+      <div class="card-body">
+        {% if finding.ai_comment %}
+          <p class="mb-0">{{ finding.ai_comment }}</p>
+        {% else %}
+          <div class="alert alert-warning mb-0" role="alert">AI가 꺼져 있거나 호출에 실패했습니다. 규칙/플러그인 결과는 그대로 유효합니다.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+<div class="card mb-4">
+  <div class="card-header">샘플 로그</div>
+  <div class="card-body">
+    <pre class="guardian-log">{% for line in samples %}{{ line }}
+{% endfor %}</pre>
+  </div>
+</div>
+{% endblock %}

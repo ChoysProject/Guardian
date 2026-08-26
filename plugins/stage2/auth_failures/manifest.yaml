@@ -1,0 +1,8 @@
+name: auth_failures
+stage: 2
+version: "1.0"
+type: python
+description: SSH/로그인 실패와 잘못된 계정 시도를 집계합니다.
+targets: ["*"]
+config:
+  min_count: 3

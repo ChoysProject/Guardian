@@ -1,0 +1,21 @@
+[Unit]
+Description=Guardian log analysis service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/guardian
+Environment=GUARDIAN_CONFIG=/opt/guardian/config.yaml
+ExecStart=/opt/guardian/.venv/bin/python -m app
+Restart=on-failure
+RestartSec=5
+User=guardian
+Group=guardian
+
+# 사내 이전 시 config.yaml 에서 다음을 바꿉니다.
+#   app.host: 0.0.0.0
+#   auth.enabled: true
+#   database.url: postgresql+psycopg://...
+
+[Install]
+WantedBy=multi-user.target

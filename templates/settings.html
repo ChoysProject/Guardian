@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set title = "설정" %}
+{% set heading = "설정" %}
+{% block content %}
+<div class="alert alert-info" role="alert">비밀값(비밀번호, OpenAI/Dify API 키)은 화면에 넣지 않습니다. 반입 전에는 OpenAI, 폐쇄망에서는 Dify로 바꾸면 됩니다.</div>
+<div class="card mb-4">
+  <div class="card-header">현재 설정</div>
+  <div class="card-body">
+    <div class="row mb-2">
+      <div class="col-md-3 text-muted small">설정 파일</div>
+      <div class="col-md-9"><code>{{ cfg.config_path }}</code></div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-3 text-muted small">바인딩</div>
+      <div class="col-md-9">{{ cfg.host }}:{{ cfg.port }}</div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-3 text-muted small">타임존</div>
+      <div class="col-md-9">{{ cfg.timezone }}</div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-3 text-muted small">인증</div>
+      <div class="col-md-9">{% if cfg.auth_enabled %}사용{% else %}로컬 비활성{% endif %}</div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-3 text-muted small">AI</div>
+      <div class="col-md-9">{% if cfg.openai_enabled %}OpenAI {{ cfg.openai_model }}{% elif cfg.dify_enabled %}Dify{% else %}비활성 (규칙 결과만 표시){% endif %}</div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-3 text-muted small">수집 주기</div>
+      <div class="col-md-9">{{ cfg.collect_interval }}초</div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-3 text-muted small">일일 보고서</div>
+      <div class="col-md-9">{{ cfg.daily_report_time }}</div>
+    </div>
+    <div class="row">
+      <div class="col-md-3 text-muted small">플러그인</div>
+      <div class="col-md-9"><code>{{ cfg.plugin_dir }}</code></div>
+    </div>
+  </div>
+</div>
+<div class="card mb-4">
+  <div class="card-header">이전 체크리스트</div>
+  <div class="card-body">
+    <ol class="mb-4">
+      <li>config.yaml 을 사내 경로에 두고 GUARDIAN_CONFIG 로 지정</li>
+      <li>app.host 를 0.0.0.0 으로, auth.enabled 를 true 로</li>
+      <li>반입 후 openai.enabled 를 false, dify.enabled 를 true 로</li>
+      <li>Linux: scripts/guardian.service / Windows: scripts/install-windows-service.ps1</li>
+    </ol>
+    <pre class="guardian-log">{{ cfg_json }}</pre>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+name: server_report
+stage: 3
+version: "1.0"
+type: python
+enabled: true
+description: 서버마다 보고서를 하나씩 만든다. targets 로 대상을 줄일 수 있다.
+targets: ["*"]
+config:
+  mode: per_server
+  title: "서버별 일일 보고서 · {server}"
+  intro: "이 보고서는 해당 서버 Finding만 담습니다. EAI/MCI 전용 보고서는 targets 를 바꿔 복사하면 됩니다."

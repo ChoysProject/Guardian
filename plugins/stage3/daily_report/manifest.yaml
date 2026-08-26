@@ -1,0 +1,10 @@
+name: daily_report
+stage: 3
+version: "1.0"
+type: python
+enabled: true
+description: 전체 서버 Finding을 하루 단위로 묶는 공통 보고서.
+targets: ["*"]
+config:
+  mode: all
+  title: "Goodmorning Check 일일 로그 분석 보고서"

@@ -1,0 +1,15 @@
+name: disk_full
+stage: 2
+version: "1.0"
+type: rules
+description: 디스크 가득 참 메시지를 YAML 규칙으로 탐지합니다.
+targets: ["*"]
+rules:
+  - pattern: "No space left on device"
+    severity: error
+    signature: disk.full
+    min_count: 1
+  - pattern: "Disk quota exceeded"
+    severity: warn
+    signature: disk.quota
+    min_count: 1

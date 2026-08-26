@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% set title = "플러그인 수정" %}
+{% set heading = plugin.name %}
+{% block content %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<form method="post" action="/plugins/{{ plugin.stage }}/{{ plugin.name }}">
+  <div class="card mb-4">
+    <div class="card-header">기본</div>
+    <div class="card-body">
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="enabled" id="enabled" value="1" {% if plugin.enabled %}checked{% endif %}>
+        <label class="form-check-label" for="enabled">사용</label>
+      </div>
+      <div class="mb-3">
+        <label class="small mb-1" for="description">설명</label>
+        <input class="form-control" id="description" name="description" value="{{ plugin.description }}">
+      </div>
+      <div class="mb-2 small text-muted">이 플러그인을 적용할 서버. 모두 선택하지 않으면 아래 체크한 서버만 적용됩니다.</div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="all_servers" id="all_servers" value="1" {% if "*" in plugin.targets %}checked{% endif %}>
+        <label class="form-check-label" for="all_servers">모든 서버</label>
+      </div>
+      <div class="row">
+        {% for server in servers %}
+        <div class="col-md-3">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="server_names" value="{{ server.name }}" id="srv-{{ server.id }}" {% if server.name in plugin.targets %}checked{% endif %}>
+            <label class="form-check-label" for="srv-{{ server.id }}">{{ server.name }}</label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-3">
+        <label class="small mb-1" for="target_patterns">이름 패턴 (쉼표, 예: eai-.*)</label>
+        <input class="form-control" id="target_patterns" name="target_patterns" value="{{ extra_targets }}">
+      </div>
+    </div>
+  </div>
+
+  {% if plugin.stage == 3 %}
+  <div class="card mb-4">
+    <div class="card-header">보고서</div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="small mb-1" for="title">제목</label>
+        <input class="form-control" id="title" name="title" value="{{ plugin.config.get('title', '') }}">
+      </div>
+      <div class="mb-3">
+        <label class="small mb-1" for="mode">모드</label>
+        <select class="form-select" id="mode" name="mode">
+          <option value="all" {% if plugin.config.get('mode','all') == 'all' %}selected{% endif %}>통합 (대상 서버 Finding을 한 파일로)</option>
+          <option value="per_server" {% if plugin.config.get('mode') == 'per_server' %}selected{% endif %}>서버별 (서버마다 파일 생성)</option>
+        </select>
+      </div>
+      <div class="mb-0">
+        <label class="small mb-1" for="intro">안내 문구</label>
+        <input class="form-control" id="intro" name="intro" value="{{ plugin.config.get('intro', '') }}">
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if plugin.plugin_type == 'rules' %}
+  <div class="card mb-4">
+    <div class="card-header">로그 규칙 (이 서버 로그에서 찾을 문구)</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table mb-0" id="rule-table">
+          <thead><tr><th>정규식/문구</th><th>심각도</th><th>시그니처</th><th>최소 건수</th></tr></thead>
+          <tbody>
+          {% for rule in plugin.rules %}
+            <tr>
+              <td><input class="form-control form-control-sm" name="rule_pattern" value="{{ rule.get('pattern','') }}"></td>
+              <td>
+                <select class="form-select form-select-sm" name="rule_severity">
+                  {% for level in ['error','warn','info','debug'] %}
+                  <option value="{{ level }}" {% if rule.get('severity') == level %}selected{% endif %}>{{ level }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><input class="form-control form-control-sm" name="rule_signature" value="{{ rule.get('signature','') }}"></td>
+              <td><input class="form-control form-control-sm" name="rule_min_count" type="number" min="1" value="{{ rule.get('min_count', 1) }}"></td>
+            </tr>
+          {% endfor %}
+          {% for _ in range(3) %}
+            <tr>
+              <td><input class="form-control form-control-sm" name="rule_pattern" placeholder="Adapter .* failed"></td>
+              <td>
+                <select class="form-select form-select-sm" name="rule_severity">
+                  <option value="error">error</option>
+                  <option value="warn">warn</option>
+                  <option value="info">info</option>
+                  <option value="debug">debug</option>
+                </select>
+              </td>
+              <td><input class="form-control form-control-sm" name="rule_signature" placeholder="eai.adapter_failed"></td>
+              <td><input class="form-control form-control-sm" name="rule_min_count" type="number" min="1" value="1"></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% elif plugin.plugin_type == 'python' %}
+  <div class="alert alert-warning">이 플러그인은 Python입니다. 웹에서는 대상 서버와 켜짐만 바꾸고, 로직은 <code>{{ plugin.path }}/plugin.py</code> 에서 수정합니다.</div>
+  {% endif %}
+
+  <button class="btn btn-primary" type="submit">저장</button>
+  <a class="btn btn-outline-secondary" href="/plugins">목록</a>
+</form>
+{% endblock %}

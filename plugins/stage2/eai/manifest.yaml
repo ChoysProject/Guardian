@@ -1,0 +1,26 @@
+name: eai
+stage: 2
+version: "1.0"
+type: rules
+enabled: true
+description: >
+  EAI/어댑터 서버 전용. 서버 이름을 eai-01 처럼 맞추면 이 규칙만 추가된다.
+  하트비트·기동 성공은 무시하고, 채널/어댑터 실패만 Finding 으로 남긴다.
+targets: ["eai-.*", "EAI-.*"]
+rules:
+  - pattern: "Adapter .* failed|adapter error"
+    severity: error
+    signature: eai.adapter_failed
+    min_count: 1
+  - pattern: "Channel .* down|channel closed unexpectedly"
+    severity: error
+    signature: eai.channel_down
+    min_count: 1
+  - pattern: "Transaction timeout|tx timeout"
+    severity: error
+    signature: eai.tx_timeout
+    min_count: 1
+  - pattern: "Queue full|enqueue failed"
+    severity: warn
+    signature: eai.queue_backlog
+    min_count: 2

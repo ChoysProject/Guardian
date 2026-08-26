@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% set title = "징후" %}
+{% set heading = "징후" %}
+{% block content %}
+<div class="card mb-4">
+  <div class="card-header">징후</div>
+  <div class="card-body p-0">
+    {% if rows %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>심각도</th><th>서버</th><th>시그니처</th><th>건수</th><th>플러그인</th><th>AI</th></tr>
+        </thead>
+        <tbody>
+        {% for row in rows %}
+          <tr>
+            <td>
+              {% if row.finding.severity == 'error' %}<span class="badge bg-danger">{{ row.finding.severity }}</span>
+              {% elif row.finding.severity == 'warn' %}<span class="badge bg-warning">{{ row.finding.severity }}</span>
+              {% else %}<span class="badge bg-secondary">{{ row.finding.severity }}</span>{% endif %}
+            </td>
+            <td>{{ row.server_name }}</td>
+            <td><a href="/findings/{{ row.finding.id }}"><code>{{ row.finding.signature }}</code></a></td>
+            <td>{{ row.finding.count }}</td>
+            <td>{{ row.finding.plugin }}</td>
+            <td>{% if row.finding.ai_comment %}<span class="badge bg-success-soft text-success">있음</span>{% else %}-{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-muted">징후가 없습니다.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

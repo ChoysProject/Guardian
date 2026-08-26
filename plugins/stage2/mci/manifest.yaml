@@ -1,0 +1,26 @@
+name: mci
+stage: 2
+version: "1.0"
+type: rules
+enabled: true
+description: >
+  MCI/대외인터페이스 서버 전용. 서버 이름을 mci-01 처럼 맞춘다.
+  전문 매핑 실패, 타임아웃, 기관 응답코드 이상을 잡는다.
+targets: ["mci-.*", "MCI-.*"]
+rules:
+  - pattern: "mapping (error|failed)|변환 실패"
+    severity: error
+    signature: mci.mapping_failed
+    min_count: 1
+  - pattern: "interface timeout|전문 타임아웃"
+    severity: error
+    signature: mci.timeout
+    min_count: 1
+  - pattern: "response code ?= ?(?!000|00)\\d+"
+    severity: warn
+    signature: mci.bad_response
+    min_count: 1
+  - pattern: "connection reset by peer|대외기관 연결 실패"
+    severity: error
+    signature: mci.peer_reset
+    min_count: 1

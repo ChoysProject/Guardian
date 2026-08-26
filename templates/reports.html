@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% set title = "보고서" %}
+{% set heading = "보고서" %}
+{% block content %}
+<div class="d-flex align-items-center mb-3 report-toolbar">
+  <div class="alert alert-info mb-0 flex-grow-1" role="alert">활성화된 서버를 골라 서버별 보고서를 만듭니다. 지정 시각 {{ report_time }} 에는 켜진 서버 전부입니다.</div>
+  <div class="dropdown ms-3 flex-shrink-0">
+    <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">오늘 보고서 생성</button>
+    <div class="dropdown-menu dropdown-menu-end p-3 report-picker">
+      <form method="post" action="/reports/generate">
+        <input type="hidden" name="selecting" value="1">
+        <div class="small text-muted mb-2">만들 서버</div>
+        {% for server in enabled_servers %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="servers" value="{{ server.name }}" id="rs-{{ server.id }}" checked>
+          <label class="form-check-label" for="rs-{{ server.id }}">{{ server.name }}</label>
+        </div>
+        {% else %}
+        <div class="small text-muted">활성화된 서버가 없습니다.</div>
+        {% endfor %}
+        <button class="btn btn-sm btn-primary w-100 mt-3" type="submit"{% if not enabled_servers %} disabled{% endif %}>선택 생성</button>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="card mb-4">
+  <div class="card-header">보고서 목록</div>
+  <div class="card-body p-0">
+    {% if reports %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>제목</th><th>플러그인</th><th>기간</th><th>요약</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for item in reports %}
+          <tr>
+            <td><a href="/reports/{{ item.id }}">{{ item.title }}</a></td>
+            <td>{{ item.plugin }}</td>
+            <td>{{ item.period_start.date() }}</td>
+            <td>{{ item.summary }}</td>
+            <td class="text-nowrap">
+              <form method="post" action="/reports/{{ item.id }}/delete" onsubmit="return confirm('이 보고서를 삭제할까요?');">
+                <button class="btn btn-sm btn-outline-danger" type="submit">삭제</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-muted">아직 보고서가 없습니다.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+# Guardian 설정 — 이 파일을 config.yaml 로 복사해 사용합니다.
+# 사내 서버로 옮길 때는 host / auth / database.url 만 바꾸면 됩니다.
+
+app:
+  name: Goodmorning Check
+  host: 127.0.0.1          # 사내 공용이면 0.0.0.0
+  port: 8080
+  data_dir: data
+  timezone: Asia/Seoul
+  seed_demo: true          # 최초 기동 시 로컬 데모 서버·샘플 로그 등록
+
+database:
+  # 개인 PC: sqlite. 공용 서버: postgresql+psycopg://user:pass@host/guardian
+  url: sqlite:///data/guardian.db
+
+auth:
+  enabled: false           # 사내 서버 이전 시 true
+  username: admin
+  password: changeme
+
+collect:
+  interval_seconds: 60
+  ssh_timeout_seconds: 20
+  lookback_hours: 48            # 일자/시간 패턴을 펼칠 최근 구간
+  max_bytes_per_file: 1048576   # 파일당 한 사이클 최대 증분 (1MiB)
+  max_bytes_per_server: 8388608 # 서버당 한 사이클 최대 읽기 (8MiB)
+  persist_raw_events: false     # true면 원본 라인을 DB에 저장. 기본은 Finding만
+
+openai:
+  enabled: true                 # 반입 전 테스트. 폐쇄망에서는 false 로 두고 dify.enabled 를 true
+  api_key: ""                   # 또는 환경변수 OPENAI_API_KEY
+  model: gpt-4o-mini
+  base_url: https://api.openai.com/v1
+  timeout_seconds: 30
+
+dify:
+  enabled: false
+  base_url: http://dify.internal/v1
+  api_key: ""
+  workflow_id: ""
+  user: guardian
+  timeout_seconds: 30
+  # 워크플로 입력 변수 이름. Dify 쪽에서 이 키로 JSON 문자열을 받도록 맞춥니다.
+  input_key: findings_json
+
+scheduler:
+  daily_report_time: "18:00"    # HH:MM, app.timezone 기준
+
+plugins:
+  dir: plugins
+
+retention:
+  log_event_days: 7

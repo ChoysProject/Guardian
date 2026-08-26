@@ -1,0 +1,11 @@
+name: eai_report
+stage: 3
+version: "1.0"
+type: python
+enabled: true
+description: EAI 서버 Finding만 모은 일일 보고서. eai-* 서버가 있을 때만 파일이 생긴다.
+targets: ["eai-.*", "EAI-.*"]
+config:
+  mode: all
+  title: "EAI 일일 보고서"
+  intro: "채널/어댑터/트랜잭션 타임아웃 위주입니다. 공통 일일 보고서와 별도로 남깁니다."
