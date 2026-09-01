@@ -34,18 +34,34 @@
               <div class="nav-link-icon"><i data-feather="activity"></i></div>
               현황
             </a>
-            <a class="nav-link {% if request.url.path.startswith('/servers') %}active{% endif %}" href="/servers">
+            {% set servers_open = request.url.path == '/servers' or request.url.path.startswith('/servers/') %}
+            <a class="nav-link {% if not servers_open %}collapsed{% endif %}" href="javascript:void(0);" data-bs-toggle="collapse" data-bs-target="#collapseServers" aria-expanded="{{ 'true' if servers_open else 'false' }}" aria-controls="collapseServers">
               <div class="nav-link-icon"><i data-feather="server"></i></div>
               서버
+              <div class="sidenav-collapse-arrow"><i data-feather="chevron-down"></i></div>
             </a>
+            <div class="collapse {% if servers_open %}show{% endif %}" id="collapseServers" data-bs-parent="#accordionSidenav">
+              <nav class="sidenav-menu-nested nav">
+                <a class="nav-link {% if request.url.path == '/servers' %}active{% endif %}" href="/servers">수집 대상 서버</a>
+                <a class="nav-link {% if request.url.path.startswith('/servers/resources') %}active{% endif %}" href="/servers/resources">서버 리소스 분석</a>
+              </nav>
+            </div>
             <a class="nav-link {% if request.url.path.startswith('/findings') %}active{% endif %}" href="/findings">
               <div class="nav-link-icon"><i data-feather="alert-triangle"></i></div>
               징후
             </a>
-            <a class="nav-link {% if request.url.path.startswith('/reports') %}active{% endif %}" href="/reports">
+            {% set reports_open = request.url.path == '/reports' or request.url.path.startswith('/reports/') %}
+            <a class="nav-link {% if not reports_open %}collapsed{% endif %}" href="javascript:void(0);" data-bs-toggle="collapse" data-bs-target="#collapseReports" aria-expanded="{{ 'true' if reports_open else 'false' }}" aria-controls="collapseReports">
               <div class="nav-link-icon"><i data-feather="file-text"></i></div>
               보고서
+              <div class="sidenav-collapse-arrow"><i data-feather="chevron-down"></i></div>
             </a>
+            <div class="collapse {% if reports_open %}show{% endif %}" id="collapseReports" data-bs-parent="#accordionSidenav">
+              <nav class="sidenav-menu-nested nav">
+                <a class="nav-link {% if request.url.path == '/reports' %}active{% endif %}" href="/reports">로그 보고서</a>
+                <a class="nav-link {% if request.url.path.startswith('/reports/resources') %}active{% endif %}" href="/reports/resources">리소스 분석 보고서</a>
+              </nav>
+            </div>
             <a class="nav-link {% if request.url.path.startswith('/plugins') %}active{% endif %}" href="/plugins">
               <div class="nav-link-icon"><i data-feather="sliders"></i></div>
               플러그인

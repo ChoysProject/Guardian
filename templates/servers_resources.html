@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% set title = "서버 리소스 분석" %}
+{% set heading = "서버 리소스 분석" %}
+{% block content %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if saved %}<div class="alert alert-success">{{ saved }}건을 넣었습니다.</div>{% endif %}
+<div class="alert alert-info" role="alert">
+  각 서버에서 쉘 스크립트로 CPU, MEM, Disk, 인스턴스 상태를 일자별 JSON으로 쌓은 뒤 여기에 넣습니다.
+  Guardian이 서버에 들어가 명령을 실행하지 않습니다. 넣은 자료는 파일로만 보관하며, 보고서 메뉴의 리소스 분석 보고서에서 일주일 추이를 만듭니다.
+</div>
+<div class="card mb-4">
+  <div class="card-header">자료 넣기</div>
+  <div class="card-body">
+    <form method="post" action="/servers/resources" enctype="multipart/form-data">
+      <div class="row gx-3">
+        <div class="col-md-4 mb-3">
+          <label class="small mb-1" for="server">서버</label>
+          <select class="form-select" id="server" name="server">
+            <option value="">JSON에 적힌 이름 사용</option>
+            {% for item in servers %}
+            <option value="{{ item.name }}">{{ item.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="small mb-1" for="date">날짜</label>
+          <input class="form-control" id="date" name="date" type="date" value="{{ today }}">
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="small mb-1" for="files">JSON 파일 (여러 개 가능)</label>
+          <input class="form-control" id="files" name="files" type="file" accept=".json,application/json" multiple>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="small mb-1" for="payload">또는 JSON 붙여넣기</label>
+        <textarea class="form-control font-monospace" id="payload" name="payload" rows="10"></textarea>
+      </div>
+      <button class="btn btn-primary" type="submit">넣기</button>
+    </form>
+  </div>
+</div>
+<div class="card mb-4">
+  <div class="card-header">JSON 형식</div>
+  <div class="card-body">
+    <p class="small text-muted mb-2">객체 하나, 배열, 또는 <code>{"snapshots":[...]}</code> 모두 됩니다. 파일 안에 server/date가 있으면 아래 선택값을 덮어씁니다.</p>
+    <pre class="guardian-log mb-0">{{ sample }}</pre>
+  </div>
+</div>
+<div class="card mb-4">
+  <div class="card-header">보관 중인 자료</div>
+  <div class="card-body p-0">
+    {% if groups %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>서버</th><th>날짜</th><th>CPU</th><th>MEM</th><th>Disk</th><th>인스턴스</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for group in groups %}
+          {% for item in group.snapshots %}
+          <tr>
+            <td>{{ group.server }}</td>
+            <td>{{ item.date }}</td>
+            <td>{% if item.cpu and item.cpu.usage_pct is not none %}{{ item.cpu.usage_pct }}%{% else %}-{% endif %}</td>
+            <td>{% if item.mem and item.mem.used_pct is not none %}{{ item.mem.used_pct }}%{% else %}-{% endif %}</td>
+            <td>
+              {% for disk in item.disk %}
+              <span class="d-block"><code>{{ disk.mount }}</code> {{ disk.used_pct }}%</span>
+              {% else %}-{% endfor %}
+            </td>
+            <td>
+              {% for inst in item.instances %}
+              <span class="badge {{ 'bg-success-soft text-success' if inst.ok else 'bg-danger-soft text-danger' }}">{{ inst.name }}</span>
+              {% else %}-{% endfor %}
+            </td>
+            <td>
+              <form method="post" action="/servers/resources/delete" onsubmit="return confirm('이 날짜 자료를 지울까요?');">
+                <input type="hidden" name="server" value="{{ group.server }}">
+                <input type="hidden" name="date" value="{{ item.date }}">
+                <button class="btn btn-sm btn-outline-danger" type="submit">삭제</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-muted">아직 넣은 자료가 없습니다.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

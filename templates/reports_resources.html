@@ -1,24 +1,24 @@
 {% extends "base.html" %}
-{% set title = "로그 보고서" %}
-{% set heading = "로그 보고서" %}
+{% set title = "리소스 분석 보고서" %}
+{% set heading = "리소스 분석 보고서" %}
 {% block content %}
 <div class="d-flex align-items-center mb-3 report-toolbar">
-  <div class="alert alert-info mb-0 flex-grow-1" role="alert">활성화된 서버를 골라 로그 이상징후 보고서를 만듭니다. 지정 시각 {{ report_time }} 에는 켜진 서버 전부입니다.</div>
+  <div class="alert alert-info mb-0 flex-grow-1" role="alert">서버 리소스 분석에 넣은 일자별 자료로, 최근 {{ days }}일 추이(평균·최대·방향, 인스턴스 이상)를 서버별 보고서로 만듭니다.</div>
   <div class="dropdown ms-3 flex-shrink-0">
-    <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">오늘 보고서 생성</button>
+    <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">추이 보고서 생성</button>
     <div class="dropdown-menu dropdown-menu-end p-3 report-picker">
-      <form method="post" action="/reports/generate">
+      <form method="post" action="/reports/resources/generate">
         <input type="hidden" name="selecting" value="1">
         <div class="small text-muted mb-2">만들 서버</div>
-        {% for server in enabled_servers %}
+        {% for name in resource_servers %}
         <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="servers" value="{{ server.name }}" id="rs-{{ server.id }}" checked>
-          <label class="form-check-label" for="rs-{{ server.id }}">{{ server.name }}</label>
+          <input class="form-check-input" type="checkbox" name="servers" value="{{ name }}" id="rr-{{ loop.index }}" checked>
+          <label class="form-check-label" for="rr-{{ loop.index }}">{{ name }}</label>
         </div>
         {% else %}
-        <div class="small text-muted">활성화된 서버가 없습니다.</div>
+        <div class="small text-muted">먼저 서버 리소스 분석에 자료를 넣으세요.</div>
         {% endfor %}
-        <button class="btn btn-sm btn-primary w-100 mt-3" type="submit"{% if not enabled_servers %} disabled{% endif %}>선택 생성</button>
+        <button class="btn btn-sm btn-primary w-100 mt-3" type="submit"{% if not resource_servers %} disabled{% endif %}>선택 생성</button>
       </form>
     </div>
   </div>
@@ -37,7 +37,7 @@
           <tr>
             <td><a href="/reports/{{ item.id }}">{{ item.title }}</a></td>
             <td>{{ item.plugin }}</td>
-            <td>{{ item.period_start.date() }}</td>
+            <td>{{ item.period_start.date() }} ~ {{ item.period_end.date() }}</td>
             <td>{{ item.summary }}</td>
             <td class="text-nowrap">
               <form method="post" action="/reports/{{ item.id }}/delete" onsubmit="return confirm('이 보고서를 삭제할까요?');">
@@ -50,7 +50,7 @@
       </table>
     </div>
     {% else %}
-    <div class="p-4 text-muted">아직 보고서가 없습니다.</div>
+    <div class="p-4 text-muted">아직 리소스 분석 보고서가 없습니다.</div>
     {% endif %}
   </div>
 </div>

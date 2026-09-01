@@ -70,3 +70,4 @@ def test_health_and_dashboard_and_pipeline():
         assert servers_page.status_code == 200
         assert "규칙 등록" in servers_page.text
         assert "보고서 등록" in servers_page.text
+        assert "수집 대상 서버" in servers_page.text
