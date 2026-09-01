@@ -9,6 +9,7 @@ data/*.db
 data/*.db-journal
 data/reports/
 data/metrics/
+data/resources/
 data/cursors.json
 .pytest_cache/
 .mypy_cache/

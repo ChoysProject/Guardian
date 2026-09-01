@@ -6,7 +6,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -19,6 +19,17 @@ from app.models import CollectRun, Finding, Report, Server, init_db
 from app.charts import chart_summary
 from app.cursors import PAGE_SIZE, migrate_from_db, page_cursors
 from app.pipeline.reports import generate_reports
+from app.resources import (
+    SAMPLE_JSON,
+    delete_snapshot,
+    generate_resource_reports,
+    is_resource_plugin,
+    list_snapshots,
+    parse_payload,
+    save_snapshot,
+    snapshot_server_names,
+    today_stamp,
+)
 from app.plugins import editor as plugin_editor
 from app.plugins.loader import load_manifests
 from app.plugins.runtime import assigned_plugins
@@ -145,6 +156,95 @@ def create_server(
     return RedirectResponse("/servers", status_code=303)
 
 
+@app.get("/servers/resources", response_class=HTMLResponse)
+def servers_resources_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    saved: int = 0,
+):
+    servers = db.query(Server).order_by(Server.name).all()
+    return templates.TemplateResponse(
+        request,
+        "servers_resources.html",
+        _ctx(
+            request,
+            servers=servers,
+            groups=list_snapshots(),
+            today=today_stamp(),
+            sample=json.dumps(SAMPLE_JSON, ensure_ascii=False, indent=2),
+            saved=saved or 0,
+            error="",
+        ),
+    )
+
+
+@app.post("/servers/resources", response_class=HTMLResponse)
+async def servers_resources_upload(
+    request: Request,
+    db: Session = Depends(get_db),
+    server: str = Form(""),
+    date: str = Form(""),
+    payload: str = Form(""),
+    files: list[UploadFile] = File(default=[]),
+):
+    servers = db.query(Server).order_by(Server.name).all()
+    texts: list[str] = []
+    if payload.strip():
+        texts.append(payload)
+    for upload in files:
+        filename = (upload.filename or "").strip()
+        if not filename:
+            continue
+        raw = await upload.read()
+        try:
+            texts.append(raw.decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            return templates.TemplateResponse(
+                request,
+                "servers_resources.html",
+                _ctx(
+                    request,
+                    servers=servers,
+                    groups=list_snapshots(),
+                    today=today_stamp(),
+                    sample=json.dumps(SAMPLE_JSON, ensure_ascii=False, indent=2),
+                    saved=0,
+                    error=f"{filename} 을 읽을 수 없습니다: {exc}",
+                ),
+                status_code=400,
+            )
+    saved = 0
+    try:
+        if not texts:
+            raise ValueError("JSON을 붙여넣거나 파일을 선택하세요.")
+        for text in texts:
+            for snapshot in parse_payload(text, fallback_server=server, fallback_date=date):
+                save_snapshot(snapshot)
+                saved += 1
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "servers_resources.html",
+            _ctx(
+                request,
+                servers=servers,
+                groups=list_snapshots(),
+                today=today_stamp(),
+                sample=json.dumps(SAMPLE_JSON, ensure_ascii=False, indent=2),
+                saved=0,
+                error=str(exc),
+            ),
+            status_code=400,
+        )
+    return RedirectResponse(f"/servers/resources?saved={saved}", status_code=303)
+
+
+@app.post("/servers/resources/delete")
+def servers_resources_delete(server: str = Form(...), date: str = Form(...)):
+    delete_snapshot(server, date)
+    return RedirectResponse("/servers/resources", status_code=303)
+
+
 @app.post("/servers/{server_id}/toggle")
 def toggle_server(server_id: int, db: Session = Depends(get_db)):
     server = db.get(Server, server_id)
@@ -203,7 +303,11 @@ def finding_detail(finding_id: int, request: Request, db: Session = Depends(get_
 
 @app.get("/reports", response_class=HTMLResponse)
 def reports_page(request: Request, db: Session = Depends(get_db)):
-    items = db.query(Report).order_by(Report.created_at.desc()).all()
+    items = [
+        item
+        for item in db.query(Report).order_by(Report.created_at.desc()).all()
+        if not is_resource_plugin(item.plugin)
+    ]
     enabled_servers = db.query(Server).filter(Server.enabled.is_(True)).order_by(Server.name).all()
     return templates.TemplateResponse(
         request,
@@ -223,11 +327,37 @@ def reports_generate(
     return RedirectResponse("/reports", status_code=303)
 
 
+@app.get("/reports/resources", response_class=HTMLResponse)
+def reports_resources_page(request: Request, db: Session = Depends(get_db)):
+    items = [
+        item
+        for item in db.query(Report).order_by(Report.created_at.desc()).all()
+        if is_resource_plugin(item.plugin)
+    ]
+    return templates.TemplateResponse(
+        request,
+        "reports_resources.html",
+        _ctx(request, reports=items, resource_servers=snapshot_server_names(), days=7),
+    )
+
+
+@app.post("/reports/resources/generate")
+def reports_resources_generate(
+    db: Session = Depends(get_db),
+    selecting: str = Form(""),
+    servers: list[str] = Form(default=[]),
+):
+    names = [item for item in servers if item] if selecting else None
+    generate_resource_reports(db, server_names=names, days=7)
+    return RedirectResponse("/reports/resources", status_code=303)
+
+
 @app.post("/reports/{report_id}/delete")
 def reports_delete(report_id: int, db: Session = Depends(get_db)):
     item = db.get(Report, report_id)
     if not item:
         raise HTTPException(404)
+    target = "/reports/resources" if is_resource_plugin(item.plugin) else "/reports"
     for path in (item.markdown_path, item.html_path):
         if path:
             file_path = Path(path)
@@ -235,7 +365,7 @@ def reports_delete(report_id: int, db: Session = Depends(get_db)):
                 file_path.unlink()
     db.delete(item)
     db.commit()
-    return RedirectResponse("/reports", status_code=303)
+    return RedirectResponse(target, status_code=303)
 
 
 @app.get("/reports/{report_id}", response_class=HTMLResponse)
