@@ -33,6 +33,90 @@ def annotate_findings(findings: list[dict[str, Any]]) -> list[str]:
         return empty
 
 
+RESOURCE_SYSTEM = (
+    "서버 리소스 추이 요약을 한국어로 해석한다. "
+    "주어진 JSON 통계만 보고, 없는 수치를 지어내지 않는다. "
+    "디스크 소진 예상일, 피크 시간대, 인스턴스 재시작·중단처럼 근거가 있는 것만 짚는다. "
+    '출력은 {"summary": "두세 문장", "risks": ["..."], "actions": ["..."]} 형태의 JSON 객체만 낸다. '
+    "risks 와 actions 는 각각 최대 3개, 한 줄씩 쓴다."
+)
+
+
+def review_resources(payload: dict[str, Any]) -> dict[str, Any]:
+    """리소스 추이 통계를 LLM에 보내 총평을 받는다. 실패하면 규칙 결과만 남긴다."""
+    if not payload:
+        return {}
+    try:
+        if settings.openai.enabled and settings.openai.api_key:
+            return _call_openai_resources(payload)
+        if settings.dify.enabled:
+            comments = _call_dify([payload])
+            text = "\n".join(item for item in comments if item).strip()
+            return {"summary": text} if text else {}
+        return {}
+    except Exception:
+        logger.exception("AI 리소스 총평 실패 — 규칙 결과만 유지합니다.")
+        return {}
+
+
+def _call_openai_resources(payload: dict[str, Any]) -> dict[str, Any]:
+    url = settings.openai.base_url.rstrip("/") + "/chat/completions"
+    body = {
+        "model": settings.openai.model,
+        "temperature": 0.2,
+        "messages": [
+            {"role": "system", "content": RESOURCE_SYSTEM},
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ],
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.openai.api_key}",
+        "Content-Type": "application/json",
+    }
+    with httpx.Client(timeout=settings.openai.timeout_seconds) as client:
+        response = client.post(url, json=body, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+    text = (
+        data.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+        .strip()
+    )
+    return _parse_review(text)
+
+
+def _parse_review(text: str) -> dict[str, Any]:
+    if not text:
+        return {}
+    body = text.strip()
+    if body.startswith("```"):
+        body = body.strip("`")
+        body = body.split("\n", 1)[-1] if "\n" in body else body
+    start = body.find("{")
+    end = body.rfind("}")
+    if start >= 0 and end > start:
+        body = body[start : end + 1]
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        return {"summary": text.strip()}
+    if not isinstance(parsed, dict):
+        return {"summary": text.strip()}
+    def _lines(value: Any) -> list[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()][:3]
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        return []
+
+    return {
+        "summary": str(parsed.get("summary") or "").strip(),
+        "risks": _lines(parsed.get("risks")),
+        "actions": _lines(parsed.get("actions")),
+    }
+
+
 def _call_openai(payload: list[dict[str, Any]]) -> list[str]:
     url = settings.openai.base_url.rstrip("/") + "/chat/completions"
     body = {

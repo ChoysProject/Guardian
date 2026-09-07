@@ -1,0 +1,8 @@
+name: resource_basic
+stage: 4
+version: '1.0'
+type: resource_script
+enabled: true
+description: CPU·메모리·디스크·인스턴스 상태를 한 번에 찍어 오는 기본 수집 스크립트
+targets:
+- '*'

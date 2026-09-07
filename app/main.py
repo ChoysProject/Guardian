@@ -5,9 +5,10 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -29,6 +30,7 @@ from app.resources import (
     save_snapshot,
     snapshot_server_names,
     today_stamp,
+    write_sample_snapshots,
 )
 from app.plugins import editor as plugin_editor
 from app.plugins.loader import load_manifests
@@ -36,6 +38,19 @@ from app.plugins.runtime import assigned_plugins
 from app.pipeline.runner import collect_and_analyze
 from app.scheduler import shutdown_scheduler, start_scheduler
 from app.seed import seed_demo
+from app.resource_collect import (
+    collect_server,
+    dump_plugins,
+    plugin_for_server,
+    resource_plugins,
+    test_connection,
+)
+from app.secrets_store import delete_key, encrypt, key_label, save_key
+from app.server_modes import (
+    get_modes,
+    migrate_from_file as migrate_modes_from_file,
+    set_instances,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
@@ -57,6 +72,7 @@ async def lifespan(_: FastAPI):
     init_db()
     from app.models import SessionLocal
 
+    migrate_modes_from_file()
     db = SessionLocal()
     try:
         seed_demo(db)
@@ -86,6 +102,41 @@ def _ctx(request: Request, **extra):
     }
     data.update(extra)
     return data
+
+
+def _resource_servers(db: Session) -> list[Server]:
+    return [
+        item
+        for item in db.query(Server).order_by(Server.name).all()
+        if item.collect_resources
+    ]
+
+
+def _resources_page_ctx(request: Request, db: Session, **extra):
+    servers = _resource_servers(db)
+    groups = list_snapshots()
+    group_map = {group["server"]: group for group in groups}
+    script_path = ROOT / "scripts" / "sample_resource.sh"
+    instance_map = {item.name: parse_json_list(item.instances) for item in servers}
+    plugin_map = {item.name: parse_json_list(item.plugins) for item in servers}
+    payload = {
+        "servers": servers,
+        "groups": groups,
+        "group_map": group_map,
+        "group_map_json": json.dumps(group_map, ensure_ascii=False),
+        "instance_map": instance_map,
+        "instance_map_json": json.dumps(instance_map, ensure_ascii=False),
+        "plugin_map": plugin_map,
+        "resource_plugins": resource_plugins(),
+        "today": today_stamp(),
+        "sample": json.dumps(SAMPLE_JSON, ensure_ascii=False, indent=2),
+        "sample_script": script_path.read_text(encoding="utf-8") if script_path.exists() else "",
+        "saved": 0,
+        "error": "",
+        "notice": "",
+    }
+    payload.update(extra)
+    return _ctx(request, **payload)
 
 
 @app.get("/health")
@@ -118,19 +169,25 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@app.get("/servers", response_class=HTMLResponse)
-def servers_page(request: Request, db: Session = Depends(get_db)):
-    servers = db.query(Server).order_by(Server.name).all()
-    bindings = {item.name: assigned_plugins(item.name) for item in servers}
+@app.get("/servers")
+def servers_root():
+    return RedirectResponse("/servers/resources", status_code=307)
+
+
+@app.get("/servers/logs", response_class=HTMLResponse)
+def servers_logs_page(request: Request, db: Session = Depends(get_db)):
+    servers = [item for item in db.query(Server).order_by(Server.name).all() if item.collect_logs]
+    modes = {item.name: get_modes(item.name) for item in servers}
     return templates.TemplateResponse(
         request,
         "servers.html",
-        _ctx(request, servers=servers, plugin_bindings=bindings),
+        _ctx(request, servers=servers, server_modes=modes, error=""),
     )
 
 
-@app.post("/servers")
-def create_server(
+@app.post("/servers/logs")
+def create_log_server(
+    request: Request,
     name: str = Form(...),
     collector_type: str = Form("ssh"),
     host: str = Form(""),
@@ -140,20 +197,42 @@ def create_server(
     log_paths: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    paths = [item.strip() for item in log_paths.replace(",", "\n").splitlines() if item.strip()]
-    server = Server(
-        name=name.strip(),
-        collector_type=collector_type,
-        host=host.strip(),
-        port=port,
-        username=username.strip(),
-        key_path=key_path.strip(),
-        log_paths=dump_json(paths),
-        enabled=True,
-    )
-    db.add(server)
-    db.commit()
-    return RedirectResponse("/servers", status_code=303)
+    servers = [item for item in db.query(Server).order_by(Server.name).all() if item.collect_logs]
+    modes = {item.name: get_modes(item.name) for item in servers}
+    try:
+        clean = name.strip()
+        if not clean:
+            raise ValueError("서버 이름을 넣어 주세요.")
+        exists = db.query(Server).filter(Server.name == clean).one_or_none()
+        paths = [item.strip() for item in log_paths.replace(",", "\n").splitlines() if item.strip()]
+        if exists:
+            # 리소스 쪽에 이미 있는 서버면 로그 수집만 켜 준다.
+            exists.collect_logs = True
+            exists.log_paths = dump_json(paths) if paths else exists.log_paths
+            db.commit()
+        else:
+            server = Server(
+                name=clean,
+                collector_type=collector_type,
+                host=host.strip(),
+                port=port,
+                username=username.strip(),
+                key_path=key_path.strip(),
+                log_paths=dump_json(paths),
+                collect_logs=True,
+                collect_resources=False,
+                enabled=True,
+            )
+            db.add(server)
+            db.commit()
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "servers.html",
+            _ctx(request, servers=servers, server_modes=modes, error=str(exc)),
+            status_code=400,
+        )
+    return RedirectResponse("/servers/logs#collecting", status_code=303)
 
 
 @app.get("/servers/resources", response_class=HTMLResponse)
@@ -161,20 +240,237 @@ def servers_resources_page(
     request: Request,
     db: Session = Depends(get_db),
     saved: int = 0,
+    notice: str = "",
 ):
-    servers = db.query(Server).order_by(Server.name).all()
     return templates.TemplateResponse(
         request,
         "servers_resources.html",
+        _resources_page_ctx(request, db, saved=saved or 0, notice=notice),
+    )
+
+
+@app.post("/servers/resources/new", response_class=HTMLResponse)
+async def create_resource_server(
+    request: Request,
+    db: Session = Depends(get_db),
+    name: str = Form(...),
+    collector_type: str = Form("ssh"),
+    host: str = Form(""),
+    port: int = Form(22),
+    username: str = Form(""),
+    auth_type: str = Form("key"),
+    password: str = Form(""),
+    key_path: str = Form(""),
+    note: str = Form(""),
+    instances: list[str] = Form(default=[]),
+    plugins: list[str] = Form(default=[]),
+    key_file: UploadFile | None = File(default=None),
+):
+    try:
+        clean = name.strip()
+        if not clean:
+            raise ValueError("서버 이름을 넣어 주세요.")
+        if db.query(Server).filter(Server.name == clean).one_or_none():
+            raise ValueError(f"이미 있는 이름입니다: {clean}")
+        stored_key = await _store_key(clean, auth_type, key_file, key_path)
+        server = Server(
+            name=clean,
+            collector_type=collector_type,
+            host=host.strip(),
+            port=port,
+            username=username.strip(),
+            auth_type=auth_type,
+            password_enc=encrypt(password) if auth_type == "password" else "",
+            key_path=stored_key,
+            log_paths=dump_json([]),
+            collect_logs=False,
+            collect_resources=True,
+            instances=json.dumps(_clean_names(instances), ensure_ascii=False),
+            plugins=dump_plugins(plugins),
+            note=note.strip(),
+            enabled=True,
+        )
+        db.add(server)
+        db.commit()
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "servers_resources.html",
+            _resources_page_ctx(request, db, error=str(exc)),
+            status_code=400,
+        )
+    return RedirectResponse("/servers/resources#collecting", status_code=303)
+
+
+def _clean_names(items: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    for raw in items or []:
+        for part in str(raw or "").replace(",", "\n").splitlines():
+            text = part.strip()
+            if text and text not in cleaned:
+                cleaned.append(text)
+    return cleaned
+
+
+async def _store_key(server_name: str, auth_type: str, upload: UploadFile | None, typed_path: str) -> str:
+    if auth_type != "key":
+        return ""
+    if upload is not None and (upload.filename or "").strip():
+        return save_key(server_name, await upload.read())
+    return (typed_path or "").strip()
+
+
+@app.get("/servers/resources/{server_id}/edit", response_class=HTMLResponse)
+def resource_server_edit(
+    server_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    tested: str = "",
+    error: str = "",
+):
+    server = db.get(Server, server_id)
+    if not server:
+        raise HTTPException(404)
+    manifest = plugin_for_server(server)
+    return templates.TemplateResponse(
+        request,
+        "server_resource_edit.html",
         _ctx(
             request,
-            servers=servers,
-            groups=list_snapshots(),
-            today=today_stamp(),
-            sample=json.dumps(SAMPLE_JSON, ensure_ascii=False, indent=2),
-            saved=saved or 0,
-            error="",
+            server=server,
+            instances=parse_json_list(server.instances),
+            chosen=parse_json_list(server.plugins),
+            resource_plugins=resource_plugins(),
+            effective_plugin=manifest.name if manifest else "",
+            key_label=key_label(server.key_path),
+            tested=tested,
+            error=error,
         ),
+    )
+
+
+@app.post("/servers/resources/{server_id}/edit", response_class=HTMLResponse)
+async def resource_server_save(
+    server_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    host: str = Form(""),
+    port: int = Form(22),
+    username: str = Form(""),
+    collector_type: str = Form("ssh"),
+    auth_type: str = Form("key"),
+    password: str = Form(""),
+    key_path: str = Form(""),
+    note: str = Form(""),
+    collect_logs: str = Form(""),
+    collect_resources: str = Form("1"),
+    instances: list[str] = Form(default=[]),
+    plugins: list[str] = Form(default=[]),
+    key_file: UploadFile | None = File(default=None),
+):
+    server = db.get(Server, server_id)
+    if not server:
+        raise HTTPException(404)
+    server.host = host.strip()
+    server.port = port
+    server.username = username.strip()
+    server.collector_type = collector_type
+    server.note = note.strip()
+    server.collect_logs = bool(collect_logs)
+    server.collect_resources = bool(collect_resources)
+    server.instances = json.dumps(_clean_names(instances), ensure_ascii=False)
+    server.plugins = dump_plugins(plugins)
+    previous_key = server.key_path
+    server.auth_type = auth_type
+    if auth_type == "key":
+        stored = await _store_key(server.name, auth_type, key_file, key_path or previous_key)
+        server.key_path = stored
+        server.password_enc = ""
+    elif auth_type == "password":
+        if password.strip():
+            server.password_enc = encrypt(password)
+        server.key_path = ""
+        if previous_key:
+            delete_key(previous_key)
+    else:
+        server.password_enc = ""
+        server.key_path = ""
+    db.commit()
+    return RedirectResponse(f"/servers/resources/{server_id}/edit", status_code=303)
+
+
+@app.post("/servers/resources/{server_id}/delete")
+def resource_server_delete(server_id: int, db: Session = Depends(get_db)):
+    server = db.get(Server, server_id)
+    if not server:
+        raise HTTPException(404)
+    if server.collect_logs:
+        # 로그 수집도 하는 서버면 리소스 쪽에서만 뺀다.
+        server.collect_resources = False
+        db.commit()
+    else:
+        if server.key_path:
+            delete_key(server.key_path)
+        db.delete(server)
+        db.commit()
+    return RedirectResponse("/servers/resources#collecting", status_code=303)
+
+
+@app.post("/servers/resources/{server_id}/collect", response_class=HTMLResponse)
+def resource_server_collect(server_id: int, request: Request, db: Session = Depends(get_db)):
+    server = db.get(Server, server_id)
+    if not server:
+        raise HTTPException(404)
+    try:
+        snapshot = collect_server(db, server)
+    except Exception as exc:  # noqa: BLE001 — 사유를 화면에 그대로 보여 준다
+        return templates.TemplateResponse(
+            request,
+            "servers_resources.html",
+            _resources_page_ctx(request, db, error=f"{server.name} 수집 실패: {exc}"),
+            status_code=400,
+        )
+    notice = quote(f"{server.name} · {snapshot.get('date')} 자료를 받았습니다.")
+    return RedirectResponse(f"/servers/resources?notice={notice}#collecting", status_code=303)
+
+
+@app.post("/servers/resources/{server_id}/test")
+def resource_server_test(server_id: int, db: Session = Depends(get_db)):
+    server = db.get(Server, server_id)
+    if not server:
+        raise HTTPException(404)
+    try:
+        result = quote(test_connection(server)[:400])
+        return RedirectResponse(
+            f"/servers/resources/{server_id}/edit?tested={result}", status_code=303
+        )
+    except Exception as exc:  # noqa: BLE001 — 접속 실패 사유를 보여 준다
+        return RedirectResponse(
+            f"/servers/resources/{server_id}/edit?error={quote(str(exc)[:400])}", status_code=303
+        )
+
+
+@app.get("/servers/resources/sample.sh")
+def servers_resources_sample_script(server: str = ""):
+    path = ROOT / "scripts" / "sample_resource.sh"
+    if not path.exists():
+        raise HTTPException(404)
+    name = (server or "").strip()
+    if not name:
+        return FileResponse(path, filename="sample_resource.sh", media_type="text/x-shellscript")
+    instances = " ".join(get_modes(name)["instances"]) or "was mq"
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(
+        'SERVER_NAME="${SERVER_NAME:-$(hostname -s)}"',
+        f'SERVER_NAME="${{SERVER_NAME:-{name}}}"',
+    ).replace(
+        'INSTANCES="${INSTANCES:-was mq}"',
+        f'INSTANCES="${{INSTANCES:-{instances}}}"',
+    )
+    return Response(
+        text,
+        media_type="text/x-shellscript",
+        headers={"Content-Disposition": f'attachment; filename="{name}_resource.sh"'},
     )
 
 
@@ -185,9 +481,9 @@ async def servers_resources_upload(
     server: str = Form(""),
     date: str = Form(""),
     payload: str = Form(""),
+    bind_server: str = Form(""),
     files: list[UploadFile] = File(default=[]),
 ):
-    servers = db.query(Server).order_by(Server.name).all()
     texts: list[str] = []
     if payload.strip():
         texts.append(payload)
@@ -202,15 +498,7 @@ async def servers_resources_upload(
             return templates.TemplateResponse(
                 request,
                 "servers_resources.html",
-                _ctx(
-                    request,
-                    servers=servers,
-                    groups=list_snapshots(),
-                    today=today_stamp(),
-                    sample=json.dumps(SAMPLE_JSON, ensure_ascii=False, indent=2),
-                    saved=0,
-                    error=f"{filename} 을 읽을 수 없습니다: {exc}",
-                ),
+                _resources_page_ctx(request, db, error=f"{filename} 을 읽을 수 없습니다: {exc}"),
                 status_code=400,
             )
     saved = 0
@@ -218,24 +506,24 @@ async def servers_resources_upload(
         if not texts:
             raise ValueError("JSON을 붙여넣거나 파일을 선택하세요.")
         for text in texts:
-            for snapshot in parse_payload(text, fallback_server=server, fallback_date=date):
+            for snapshot in parse_payload(text, fallback_server=bind_server or server, fallback_date=date):
+                if bind_server.strip():
+                    snapshot["server"] = bind_server.strip()
                 save_snapshot(snapshot)
                 saved += 1
     except ValueError as exc:
         return templates.TemplateResponse(
             request,
             "servers_resources.html",
-            _ctx(
-                request,
-                servers=servers,
-                groups=list_snapshots(),
-                today=today_stamp(),
-                sample=json.dumps(SAMPLE_JSON, ensure_ascii=False, indent=2),
-                saved=0,
-                error=str(exc),
-            ),
+            _resources_page_ctx(request, db, error=str(exc)),
             status_code=400,
         )
+    return RedirectResponse(f"/servers/resources?saved={saved}", status_code=303)
+
+
+@app.post("/servers/resources/sample")
+def servers_resources_sample():
+    saved = write_sample_snapshots(days=7, force=True)
     return RedirectResponse(f"/servers/resources?saved={saved}", status_code=303)
 
 
@@ -245,6 +533,19 @@ def servers_resources_delete(server: str = Form(...), date: str = Form(...)):
     return RedirectResponse("/servers/resources", status_code=303)
 
 
+@app.post("/servers/{server_id}/instances")
+def update_instances(
+    server_id: int,
+    instances: list[str] = Form(default=[]),
+    db: Session = Depends(get_db),
+):
+    server = db.get(Server, server_id)
+    if not server:
+        raise HTTPException(404)
+    set_instances(server.name, instances)
+    return RedirectResponse("/servers/logs#collecting", status_code=303)
+
+
 @app.post("/servers/{server_id}/toggle")
 def toggle_server(server_id: int, db: Session = Depends(get_db)):
     server = db.get(Server, server_id)
@@ -252,13 +553,13 @@ def toggle_server(server_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404)
     server.enabled = not server.enabled
     db.commit()
-    return RedirectResponse("/servers", status_code=303)
+    return RedirectResponse("/servers/logs#collecting", status_code=303)
 
 
 @app.post("/servers/{server_id}/collect")
 def collect_one(server_id: int, db: Session = Depends(get_db)):
     collect_and_analyze(db, server_ids=[server_id])
-    return RedirectResponse("/servers", status_code=303)
+    return RedirectResponse("/servers/logs#collecting", status_code=303)
 
 
 @app.post("/collect")
@@ -308,7 +609,11 @@ def reports_page(request: Request, db: Session = Depends(get_db)):
         for item in db.query(Report).order_by(Report.created_at.desc()).all()
         if not is_resource_plugin(item.plugin)
     ]
-    enabled_servers = db.query(Server).filter(Server.enabled.is_(True)).order_by(Server.name).all()
+    enabled_servers = [
+        item
+        for item in db.query(Server).filter(Server.enabled.is_(True)).order_by(Server.name).all()
+        if get_modes(item.name)["logs"]
+    ]
     return templates.TemplateResponse(
         request,
         "reports.html",
@@ -412,20 +717,32 @@ def plugins_page(request: Request):
             request,
             stage2=[item for item in items if item.stage == 2],
             stage3=[item for item in items if item.stage == 3],
+            stage4=[item for item in items if item.stage == 4],
         ),
     )
 
 
+def _default_plugin_name(stage: int, bind: str) -> str:
+    if not bind:
+        return ""
+    safe = bind.replace(".", "_")
+    if stage == 3:
+        return f"{safe}_report"
+    if stage == 4:
+        return f"{safe}_resource"
+    return f"{safe}_rules"
+
+
 @app.get("/plugins/new", response_class=HTMLResponse)
 def plugin_new(request: Request, stage: int = 2, server: str = "", db: Session = Depends(get_db)):
-    if stage not in (2, 3):
+    if stage not in (2, 3, 4):
         stage = 2
     servers = db.query(Server).order_by(Server.name).all()
     bind = server.strip()
-    default_name = ""
-    if bind:
-        safe = bind.replace(".", "_")
-        default_name = f"{safe}_rules" if stage == 2 else f"{safe}_report"
+    base_script = ""
+    if stage == 4:
+        sample = ROOT / "plugins" / "stage4" / "resource_basic" / "collect.sh"
+        base_script = sample.read_text(encoding="utf-8") if sample.exists() else ""
     return templates.TemplateResponse(
         request,
         "plugin_new.html",
@@ -435,7 +752,8 @@ def plugin_new(request: Request, stage: int = 2, server: str = "", db: Session =
             servers=servers,
             error="",
             bind_server=bind,
-            default_name=default_name,
+            default_name=_default_plugin_name(stage, bind),
+            script=base_script,
         ),
     )
 
@@ -457,12 +775,20 @@ def plugin_create(
     rule_severity: list[str] = Form(default=[]),
     rule_signature: list[str] = Form(default=[]),
     rule_min_count: list[str] = Form(default=[]),
+    script: str = Form(""),
 ):
     servers = db.query(Server).order_by(Server.name).all()
     bind = bind_server.strip()
     try:
         targets = _form_targets(all_servers, server_names, target_patterns, bind)
-        if stage == 3:
+        if stage == 4:
+            plugin_editor.create_resource_plugin(
+                name.strip(),
+                description=description,
+                targets=targets,
+                script=script,
+            )
+        elif stage == 3:
             plugin_editor.create_report_plugin(
                 name.strip(),
                 description=description,
@@ -479,8 +805,6 @@ def plugin_create(
                 rules=rules,
             )
     except (ValueError, FileExistsError, KeyError) as exc:
-        safe = bind.replace(".", "_") if bind else ""
-        default_name = f"{safe}_rules" if stage == 2 else f"{safe}_report" if safe else ""
         return templates.TemplateResponse(
             request,
             "plugin_new.html",
@@ -490,11 +814,14 @@ def plugin_create(
                 servers=servers,
                 error=str(exc),
                 bind_server=bind,
-                default_name=name.strip() or default_name,
+                default_name=name.strip() or _default_plugin_name(stage, bind),
+                script=script,
             ),
             status_code=400,
         )
-    return RedirectResponse("/servers" if bind else "/plugins", status_code=303)
+    if stage == 4:
+        return RedirectResponse("/plugins#resource", status_code=303)
+    return RedirectResponse("/servers/logs" if bind else "/plugins", status_code=303)
 
 
 @app.get("/plugins/{stage}/{name}", response_class=HTMLResponse)
@@ -509,7 +836,14 @@ def plugin_edit(stage: int, name: str, request: Request, db: Session = Depends(g
     return templates.TemplateResponse(
         request,
         "plugin_edit.html",
-        _ctx(request, plugin=plugin, servers=servers, extra_targets=extra, error=""),
+        _ctx(
+            request,
+            plugin=plugin,
+            servers=servers,
+            extra_targets=extra,
+            script=plugin_editor.read_script(stage, name) if stage == 4 else "",
+            error="",
+        ),
     )
 
 
@@ -531,6 +865,7 @@ def plugin_save(
     rule_severity: list[str] = Form(default=[]),
     rule_signature: list[str] = Form(default=[]),
     rule_min_count: list[str] = Form(default=[]),
+    script: str = Form(""),
 ):
     servers = db.query(Server).order_by(Server.name).all()
     try:
@@ -550,6 +885,7 @@ def plugin_save(
             description=description,
             rules=rules,
             config=config,
+            script=script if stage == 4 else None,
         )
     except (ValueError, KeyError) as exc:
         plugin = plugin_editor.get_manifest(stage, name)
@@ -559,10 +895,17 @@ def plugin_save(
         return templates.TemplateResponse(
             request,
             "plugin_edit.html",
-            _ctx(request, plugin=plugin, servers=servers, extra_targets=extra, error=str(exc)),
+            _ctx(
+                request,
+                plugin=plugin,
+                servers=servers,
+                extra_targets=extra,
+                script=script,
+                error=str(exc),
+            ),
             status_code=400,
         )
-    return RedirectResponse("/plugins", status_code=303)
+    return RedirectResponse("/plugins#resource" if stage == 4 else "/plugins", status_code=303)
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -612,9 +955,14 @@ def api_charts_summary(granularity: str = "hour", db: Session = Depends(get_db))
 
 
 @app.get("/api/checkpoints")
-def api_checkpoints(offset: int = 0, limit: int = PAGE_SIZE, db: Session = Depends(get_db)):
+def api_checkpoints(
+    offset: int = 0,
+    limit: int = PAGE_SIZE,
+    server_id: int | None = None,
+    db: Session = Depends(get_db),
+):
     migrate_from_db(db)
-    return page_cursors(offset, limit)
+    return page_cursors(offset, limit, server_id=server_id)
 
 
 @app.get("/api/servers")

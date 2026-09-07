@@ -3,13 +3,37 @@
 {% set heading = "플러그인" %}
 {% block content %}
 <div class="alert alert-info" role="alert">
+  리소스 수집은 서버에 붙어 돌릴 셸 스크립트입니다. 서버 화면에서 골라 끼웁니다.
   1단계는 모든 서버 공통입니다. 2단계는 서버별 로그 문구, 3단계는 보고서입니다.
   서버 화면에서 해당 서버 전용 플러그인을 바로 등록할 수 있습니다.
   웹에서는 YAML 규칙·대상 서버·켜짐 여부를 바꿉니다. Python 코드 자체는 파일로만 수정합니다.
 </div>
 <div class="mb-3">
-  <a class="btn btn-primary" href="/plugins/new?stage=2">2단계 규칙 추가</a>
+  <a class="btn btn-primary" href="/plugins/new?stage=4">리소스 수집 추가</a>
+  <a class="btn btn-outline-primary" href="/plugins/new?stage=2">2단계 규칙 추가</a>
   <a class="btn btn-outline-primary" href="/plugins/new?stage=3">3단계 보고서 추가</a>
+</div>
+<div class="card mb-4" id="resource">
+  <div class="card-header">리소스 수집 · 서버에서 돌릴 스크립트</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>이름</th><th>대상</th><th>상태</th><th></th></tr></thead>
+        <tbody>
+        {% for item in stage4 %}
+          <tr>
+            <td>{{ item.name }}<div class="text-muted small">{{ item.description }}</div></td>
+            <td><code>{{ item.targets | join(", ") }}</code></td>
+            <td>{% if item.enabled %}<span class="badge bg-success-soft text-success">ON</span>{% else %}<span class="badge bg-light text-muted">OFF</span>{% endif %}</td>
+            <td><a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="text-muted p-4">아직 리소스 수집 플러그인이 없습니다.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 <div class="card mb-4">
   <div class="card-header">Stage 2 · 서버별 분석</div>

@@ -26,7 +26,7 @@ def _root() -> Path:
 
 
 def plugin_folder(stage: int, name: str) -> Path:
-    if stage not in (2, 3) or not NAME_RE.fullmatch(name or ""):
+    if stage not in (2, 3, 4) or not NAME_RE.fullmatch(name or ""):
         raise ValueError("플러그인 이름이 올바르지 않습니다.")
     folder = (_root() / f"stage{stage}" / name).resolve()
     if _root() not in folder.parents:
@@ -66,6 +66,7 @@ def save_plugin(
     description: str = "",
     rules: list[dict[str, Any]] | None = None,
     config: dict[str, Any] | None = None,
+    script: str | None = None,
 ) -> None:
     folder = plugin_folder(stage, name)
     data = _read_raw(folder)
@@ -80,6 +81,66 @@ def save_plugin(
         current.update(config)
         data["config"] = current
     _dump(folder / "manifest.yaml", data)
+    if script is not None and stage == 4:
+        write_script(folder, script)
+
+
+def write_script(folder: Path, script: str) -> Path:
+    body = (script or "").replace("\r\n", "\n").strip()
+    if not body:
+        raise ValueError("수집 스크립트가 비어 있습니다.")
+    if not body.startswith("#!"):
+        body = "#!/bin/bash\n" + body
+    path = folder / "collect.sh"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # 원격이 리눅스라 줄바꿈은 항상 LF 로 둔다.
+    path.write_bytes((body + "\n").encode("utf-8"))
+    return path
+
+
+def read_script(stage: int, name: str) -> str:
+    path = plugin_folder(stage, name) / "collect.sh"
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def create_resource_plugin(
+    name: str,
+    *,
+    description: str = "",
+    targets: list[str],
+    script: str,
+) -> Path:
+    folder = plugin_folder(4, name)
+    if (folder / "manifest.yaml").exists():
+        raise FileExistsError(f"이미 있는 플러그인입니다: {name}")
+    write_script(folder, script)
+    _dump(
+        folder / "manifest.yaml",
+        {
+            "name": name,
+            "stage": 4,
+            "version": "1.0",
+            "type": "resource_script",
+            "enabled": True,
+            "description": description or f"{name} 리소스 수집",
+            "targets": targets or ["*"],
+        },
+    )
+    return folder
+
+
+def delete_plugin(stage: int, name: str) -> None:
+    folder = plugin_folder(stage, name)
+    if not (folder / "manifest.yaml").exists():
+        raise KeyError(f"플러그인을 찾을 수 없습니다: stage{stage}/{name}")
+    for child in sorted(folder.rglob("*"), reverse=True):
+        if child.is_file():
+            child.unlink()
+        else:
+            child.rmdir()
+    folder.rmdir()
 
 
 def create_rules_plugin(

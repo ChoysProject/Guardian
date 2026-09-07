@@ -11,6 +11,10 @@ data/reports/
 data/metrics/
 data/resources/
 data/cursors.json
+data/server_modes.json
+data/server_modes.json.migrated
+data/secret.key
+data/keys/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

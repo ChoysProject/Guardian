@@ -66,8 +66,23 @@ def test_health_and_dashboard_and_pipeline():
         listed = client.get("/reports")
         assert "삭제" in listed.text
 
-        servers_page = client.get("/servers")
+        servers_page = client.get("/servers/logs")
         assert servers_page.status_code == 200
-        assert "규칙 등록" in servers_page.text
-        assert "보고서 등록" in servers_page.text
-        assert "수집 대상 서버" in servers_page.text
+        assert "로그 수집 대상 서버" in servers_page.text
+        assert "수집 중인 서버" in servers_page.text
+        assert "정보" in servers_page.text
+        created = client.post(
+            "/servers/logs",
+            data={
+                "name": "only-logs",
+                "collector_type": "local",
+                "host": "only-logs",
+                "log_paths": "sample_logs/demo.log",
+            },
+            follow_redirects=True,
+        )
+        assert created.status_code == 200
+        assert "only-logs" in created.text
+        filtered = client.get("/api/checkpoints?offset=0&limit=50&server_id=1")
+        assert filtered.status_code == 200
+        assert "items" in filtered.json()

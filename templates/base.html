@@ -42,8 +42,8 @@
             </a>
             <div class="collapse {% if servers_open %}show{% endif %}" id="collapseServers" data-bs-parent="#accordionSidenav">
               <nav class="sidenav-menu-nested nav">
-                <a class="nav-link {% if request.url.path == '/servers' %}active{% endif %}" href="/servers">수집 대상 서버</a>
-                <a class="nav-link {% if request.url.path.startswith('/servers/resources') %}active{% endif %}" href="/servers/resources">서버 리소스 분석</a>
+                <a class="nav-link {% if request.url.path.startswith('/servers/resources') %}active{% endif %}" href="/servers/resources">리소스 수집 대상 서버</a>
+                <a class="nav-link {% if request.url.path.startswith('/servers/logs') %}active{% endif %}" href="/servers/logs">로그 수집 대상 서버</a>
               </nav>
             </div>
             <a class="nav-link {% if request.url.path.startswith('/findings') %}active{% endif %}" href="/findings">

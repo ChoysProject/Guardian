@@ -113,3 +113,12 @@ body {
   background: #fff;
   z-index: 1;
 }
+#collecting {
+  scroll-margin-top: 5.5rem;
+}
+.resource-server-row {
+  cursor: pointer;
+}
+.resource-server-row:hover {
+  background: #f8f9fa;
+}

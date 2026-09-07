@@ -60,7 +60,18 @@
   </div>
   {% endif %}
 
-  {% if plugin.plugin_type == 'rules' %}
+  {% if plugin.stage == 4 %}
+  <div class="card mb-4">
+    <div class="card-header">수집 스크립트</div>
+    <div class="card-body">
+      <p class="small text-muted mb-2">
+        <code>{{ '{{server}}' }}</code> 와 <code>{{ '{{instances}}' }}</code> 는 서버 이름·인스턴스로 바뀝니다.
+        마지막에 JSON 한 덩어리를 찍어야 합니다.
+      </p>
+      <textarea class="form-control font-monospace" name="script" rows="24">{{ script }}</textarea>
+    </div>
+  </div>
+  {% elif plugin.plugin_type == 'rules' %}
   <div class="card mb-4">
     <div class="card-header">로그 규칙 (이 서버 로그에서 찾을 문구)</div>
     <div class="card-body p-0">

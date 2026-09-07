@@ -12,6 +12,7 @@ from app.models import Finding, Report, Server
 from app.plugins.report_common import render_standard_report
 from app.plugins.runtime import assigned_plugins, _run_reporter
 from app.plugins.types import PluginContext
+from app.server_modes import analyzes_logs
 
 
 def day_window(when: datetime | None = None) -> tuple[datetime, datetime]:
@@ -30,7 +31,7 @@ def generate_reports(
 ) -> list[Report]:
     start, end = day_window(when)
     servers = {server.id: server for server in db.query(Server).all()}
-    enabled = [item for item in servers.values() if item.enabled]
+    enabled = [item for item in servers.values() if item.enabled and analyzes_logs(item.name)]
     if server_names is not None:
         wanted = {item for item in server_names if item}
         selected = [item for item in enabled if item.name in wanted]

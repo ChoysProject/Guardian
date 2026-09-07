@@ -22,10 +22,19 @@ class Server(Base):
     port: Mapped[int] = mapped_column(Integer, default=22)
     username: Mapped[str] = mapped_column(String(128), default="")
     key_path: Mapped[str] = mapped_column(String(512), default="")
+    auth_type: Mapped[str] = mapped_column(String(16), default="key")  # key | password | agent
+    password_enc: Mapped[str] = mapped_column(Text, default="")
     log_paths: Mapped[str] = mapped_column(Text, default="[]")
+    collect_logs: Mapped[bool] = mapped_column(Boolean, default=True)
+    collect_resources: Mapped[bool] = mapped_column(Boolean, default=False)
+    instances: Mapped[str] = mapped_column(Text, default="[]")
+    plugins: Mapped[str] = mapped_column(Text, default="[]")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_collect_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_error: Mapped[str] = mapped_column(Text, default="")
+    last_resource_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_resource_error: Mapped[str] = mapped_column(Text, default="")
+    note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -134,3 +143,20 @@ def init_db() -> None:
         if "inode" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE collect_cursors ADD COLUMN inode INTEGER DEFAULT 0"))
+    if inspector.has_table("servers"):
+        columns = {col["name"] for col in inspector.get_columns("servers")}
+        added = [
+            ("auth_type", "VARCHAR(16) DEFAULT 'key'"),
+            ("password_enc", "TEXT DEFAULT ''"),
+            ("collect_logs", "BOOLEAN DEFAULT 1"),
+            ("collect_resources", "BOOLEAN DEFAULT 0"),
+            ("instances", "TEXT DEFAULT '[]'"),
+            ("plugins", "TEXT DEFAULT '[]'"),
+            ("last_resource_at", "DATETIME"),
+            ("last_resource_error", "TEXT DEFAULT ''"),
+            ("note", "TEXT DEFAULT ''"),
+        ]
+        with engine.begin() as conn:
+            for column, ddl in added:
+                if column not in columns:
+                    conn.execute(text(f"ALTER TABLE servers ADD COLUMN {column} {ddl}"))

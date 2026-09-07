@@ -28,6 +28,14 @@ def _read_manifest(path: Path) -> PluginManifest:
     )
 
 
+def read_script(manifest: PluginManifest) -> str:
+    """스크립트형(리소스 수집) 플러그인이 원격에서 돌릴 셸 내용."""
+    path = Path(manifest.path) / "collect.sh"
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
 def load_manifests(plugin_dir: Path | None = None) -> list[PluginManifest]:
     root = plugin_dir or settings.plugin_path
     if not root.exists():
