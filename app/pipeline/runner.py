@@ -12,6 +12,7 @@ from app.db import dump_json, parse_json_list
 from app.models import CollectRun, Finding, LogEvent, Server
 from app.pipeline.normalize import parse_text
 from app.plugins.runtime import run_stage1, run_stage2
+from app.server_modes import analyzes_logs
 
 
 def collect_and_analyze(db: Session, server_ids: list[int] | None = None) -> CollectRun:
@@ -23,7 +24,7 @@ def collect_and_analyze(db: Session, server_ids: list[int] | None = None) -> Col
     query = db.query(Server).filter(Server.enabled.is_(True))
     if server_ids:
         query = query.filter(Server.id.in_(server_ids))
-    servers = query.all()
+    servers = [item for item in query.all() if analyzes_logs(item.name)]
 
     total_lines = 0
     total_findings = 0

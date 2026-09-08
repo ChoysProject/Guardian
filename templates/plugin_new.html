@@ -7,11 +7,11 @@
   <input type="hidden" name="stage" value="{{ stage }}">
   {% if bind_server %}<input type="hidden" name="bind_server" value="{{ bind_server }}">{% endif %}
   <div class="card mb-4">
-    <div class="card-header">{% if stage == 3 %}3단계 보고서{% else %}2단계 규칙{% endif %}{% if bind_server %} · {{ bind_server }}{% endif %}</div>
+    <div class="card-header">{% if stage == 4 %}리소스 및 성능 수집{% elif stage == 3 %}로그 분석 보고서{% else %}로그 분석 규칙{% endif %}{% if bind_server %} · {{ bind_server }}{% endif %}</div>
     <div class="card-body">
       <div class="mb-3">
         <label class="small mb-1" for="name">이름 (영문/숫자/_-)</label>
-        <input class="form-control" id="name" name="name" required value="{{ default_name }}" placeholder="{% if stage == 3 %}mci_report{% else %}eai_prod{% endif %}">
+        <input class="form-control" id="name" name="name" required value="{{ default_name }}" placeholder="{% if stage == 4 %}eai_resource{% elif stage == 3 %}mci_report{% else %}eai_prod{% endif %}">
       </div>
       <div class="mb-3">
         <label class="small mb-1" for="description">설명</label>
@@ -50,6 +50,19 @@
       </div>
     </div>
   </div>
+  {% if stage == 4 %}
+  <div class="card mb-4">
+    <div class="card-header">수집 스크립트</div>
+    <div class="card-body">
+      <p class="small text-muted mb-2">
+        Guardian이 SSH로 붙어 이 내용을 그대로 돌리고, 찍힌 JSON 한 덩어리를 받아 갑니다.
+        <code>{{ '{{server}}' }}</code> 와 <code>{{ '{{instances}}' }}</code> 는 등록한 서버 이름·인스턴스로 바뀝니다.
+      </p>
+      <textarea class="form-control font-monospace" name="script" rows="20">{{ script }}</textarea>
+    </div>
+  </div>
+  {% endif %}
+
   {% if stage == 2 %}
   <div class="card mb-4">
     <div class="card-header">로그 규칙</div>
@@ -78,6 +91,6 @@
   </div>
   {% endif %}
   <button class="btn btn-primary" type="submit">만들기</button>
-  <a class="btn btn-outline-secondary" href="{% if bind_server %}/servers{% else %}/plugins{% endif %}">취소</a>
+  <a class="btn btn-outline-secondary" href="{% if bind_server and stage != 4 %}/servers/logs{% elif stage == 4 %}/plugins/resources{% else %}/plugins/logs{% endif %}">취소</a>
 </form>
 {% endblock %}

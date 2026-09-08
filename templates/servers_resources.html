@@ -1,94 +1,228 @@
 {% extends "base.html" %}
-{% set title = "서버 리소스 분석" %}
-{% set heading = "서버 리소스 분석" %}
+{% set title = "리소스 및 성능 수집 대상 서버" %}
+{% set heading = "리소스 및 성능 수집 대상 서버" %}
 {% block content %}
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 {% if saved %}<div class="alert alert-success">{{ saved }}건을 넣었습니다.</div>{% endif %}
-<div class="alert alert-info" role="alert">
-  각 서버에서 쉘 스크립트로 CPU, MEM, Disk, 인스턴스 상태를 일자별 JSON으로 쌓은 뒤 여기에 넣습니다.
-  Guardian이 서버에 들어가 명령을 실행하지 않습니다. 넣은 자료는 파일로만 보관하며, 보고서 메뉴의 리소스 분석 보고서에서 일주일 추이를 만듭니다.
-</div>
-<div class="card mb-4">
-  <div class="card-header">자료 넣기</div>
-  <div class="card-body">
-    <form method="post" action="/servers/resources" enctype="multipart/form-data">
-      <div class="row gx-3">
-        <div class="col-md-4 mb-3">
-          <label class="small mb-1" for="server">서버</label>
-          <select class="form-select" id="server" name="server">
-            <option value="">JSON에 적힌 이름 사용</option>
-            {% for item in servers %}
-            <option value="{{ item.name }}">{{ item.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-md-4 mb-3">
-          <label class="small mb-1" for="date">날짜</label>
-          <input class="form-control" id="date" name="date" type="date" value="{{ today }}">
-        </div>
-        <div class="col-md-4 mb-3">
-          <label class="small mb-1" for="files">JSON 파일 (여러 개 가능)</label>
-          <input class="form-control" id="files" name="files" type="file" accept=".json,application/json" multiple>
-        </div>
-      </div>
-      <div class="mb-3">
-        <label class="small mb-1" for="payload">또는 JSON 붙여넣기</label>
-        <textarea class="form-control font-monospace" id="payload" name="payload" rows="10"></textarea>
-      </div>
-      <button class="btn btn-primary" type="submit">넣기</button>
-    </form>
+{% if notice %}<div class="alert alert-success">{{ notice }}</div>{% endif %}
+
+<div class="card mb-4" id="collecting">
+  <div class="card-header d-flex align-items-center justify-content-between gap-3">
+    <span class="text-nowrap">등록한 서버</span>
+    <div class="flex-grow-1">
+      <input
+        class="form-control form-control-sm"
+        id="server-search"
+        type="search"
+        placeholder="이름, 대상, 스크립트로 찾기"
+        autocomplete="off"
+      >
+    </div>
+    <button class="btn btn-sm btn-primary text-nowrap" type="button" data-bs-toggle="collapse" data-bs-target="#server-add" aria-expanded="false" aria-controls="server-add">
+      서버 등록하기
+    </button>
   </div>
-</div>
-<div class="card mb-4">
-  <div class="card-header">JSON 형식</div>
-  <div class="card-body">
-    <p class="small text-muted mb-2">객체 하나, 배열, 또는 <code>{"snapshots":[...]}</code> 모두 됩니다. 파일 안에 server/date가 있으면 아래 선택값을 덮어씁니다.</p>
-    <pre class="guardian-log mb-0">{{ sample }}</pre>
+  <div class="collapse {% if open_add %}show{% endif %}" id="server-add">
+    <div class="card-body border-bottom">
+      <p class="small text-muted mb-3">
+        바라볼 서버의 접속 정보를 넣으면 Guardian이 직접 붙어 수집 스크립트를 돌립니다.
+        비밀번호는 암호화해서 보관하고, 개인키는 올리면 서버 안에만 둡니다.
+      </p>
+      <form method="post" action="/servers/resources/new" enctype="multipart/form-data" id="resource-server-form">
+        <div class="row gx-3">
+          <div class="col-md-4 mb-3">
+            <label class="small mb-1" for="name">이름</label>
+            <input class="form-control" id="name" name="name" required placeholder="eai-01">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="small mb-1" for="host">호스트 (IP)</label>
+            <input class="form-control" id="host" name="host" placeholder="10.0.0.12">
+          </div>
+          <div class="col-md-2 mb-3">
+            <label class="small mb-1" for="port">포트</label>
+            <input class="form-control" id="port" name="port" type="number" value="22">
+          </div>
+          <div class="col-md-2 mb-3">
+            <label class="small mb-1" for="collector_type">수집기</label>
+            <select class="form-select" id="collector_type" name="collector_type" data-picker>
+              <option value="ssh" data-desc="원격 서버에 붙어서 수집">ssh</option>
+              <option value="local" data-desc="Guardian이 도는 이 서버에서 수집">local</option>
+            </select>
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="small mb-1" for="username">계정</label>
+            <input class="form-control" id="username" name="username" placeholder="guardian">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="small mb-1" for="auth_type">인증 방식</label>
+            <select class="form-select auth-type" id="auth_type" name="auth_type" data-picker>
+              <option value="key" data-desc="키 파일을 올리거나 서버 안 경로를 씁니다">개인키 (id_rsa)</option>
+              <option value="password" data-desc="암호화해서 보관합니다">비밀번호</option>
+              <option value="agent" data-desc="ssh-agent나 기본 키에 맡깁니다">에이전트 / 기본 키</option>
+            </select>
+          </div>
+          <div class="col-md-4 mb-3 auth-password d-none">
+            <label class="small mb-1" for="password">비밀번호</label>
+            <input class="form-control" id="password" name="password" type="password" autocomplete="new-password">
+            <div class="form-text">암호화해서 보관하며 화면에는 다시 보이지 않습니다.</div>
+          </div>
+          <div class="col-md-4 mb-3 auth-key">
+            <label class="small mb-1" for="key_file">개인키 파일</label>
+            <input class="form-control" id="key_file" name="key_file" type="file">
+            <div class="form-text">올리면 <code>data/keys</code> 에 권한을 제한해 보관합니다.</div>
+          </div>
+          <div class="col-md-4 mb-3 auth-key">
+            <label class="small mb-1" for="key_path">또는 서버에 있는 키 경로</label>
+            <input class="form-control" id="key_path" name="key_path" placeholder="C:\Users\me\.ssh\id_ed25519">
+          </div>
+          <div class="col-12 mb-3">
+            <label class="small mb-1" for="plugins">수집 스크립트</label>
+            <select class="form-select" id="plugins" name="plugins" data-picker data-picker-empty="스크립트를 고르세요">
+              <option value="" data-desc="기본 수집 스크립트로 돕니다">기본 스크립트로</option>
+              {% for item in resource_plugins %}
+              <option value="{{ item.name }}" data-desc="{{ item.description }}">{{ item.name }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">리소스 및 성능 쉘 스크립트에서 만든 수집 스크립트 하나를 끼웁니다.</div>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="small mb-1" for="collect_path">수집 경로</label>
+            <input class="form-control" id="collect_path" name="collect_path" placeholder="/mnt/c/Users/이름/Desktop/Test_guardian/스크립트이름">
+            <div class="form-text">
+              스크립트 폴더 또는 <code>DailyData</code> 의 리눅스/WSL 경로입니다. 비우면 스크립트 옆 <code>DailyData/</code> 에 쌓입니다.
+              예: zip을 <code>Test_guardian</code> 에 풀면 <code>/mnt/c/Users/ChoYoungSang/Desktop/Test_guardian/cys</code>
+            </div>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="small mb-1" for="note">비고</label>
+            <input class="form-control" id="note" name="note" placeholder="업무 시간 외 재기동 금지 등">
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit">등록</button>
+        <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#server-add">닫기</button>
+      </form>
+    </div>
   </div>
-</div>
-<div class="card mb-4">
-  <div class="card-header">보관 중인 자료</div>
   <div class="card-body p-0">
-    {% if groups %}
+    {% if servers %}
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0 align-middle">
         <thead>
-          <tr><th>서버</th><th>날짜</th><th>CPU</th><th>MEM</th><th>Disk</th><th>인스턴스</th><th></th></tr>
+          <tr><th>이름</th><th>대상</th><th>인증</th><th>스크립트</th><th>자료</th><th class="text-end">동작</th></tr>
         </thead>
         <tbody>
-        {% for group in groups %}
-          {% for item in group.snapshots %}
-          <tr>
-            <td>{{ group.server }}</td>
-            <td>{{ item.date }}</td>
-            <td>{% if item.cpu and item.cpu.usage_pct is not none %}{{ item.cpu.usage_pct }}%{% else %}-{% endif %}</td>
-            <td>{% if item.mem and item.mem.used_pct is not none %}{{ item.mem.used_pct }}%{% else %}-{% endif %}</td>
+        {% for server in servers %}
+          {% set group = group_map.get(server.name) %}
+          {% set chosen = plugin_map.get(server.name) or [] %}
+          {% set target = (server.username + "@" if server.username else "") + (server.host or "-") + (":" ~ server.port if server.port else "") %}
+          <tr class="resource-server-row" data-search="{{ [server.name, target, server.collector_type, server.note, chosen | join(' '), '기본' if not chosen else ''] | join(' ') }}">
             <td>
-              {% for disk in item.disk %}
-              <span class="d-block"><code>{{ disk.mount }}</code> {{ disk.used_pct }}%</span>
-              {% else %}-{% endfor %}
+              <span class="fw-semibold">{{ server.name }}</span>
+              {% if server.note %}<div class="small text-muted">{{ server.note }}</div>{% endif %}
             </td>
-            <td>
-              {% for inst in item.instances %}
-              <span class="badge {{ 'bg-success-soft text-success' if inst.ok else 'bg-danger-soft text-danger' }}">{{ inst.name }}</span>
-              {% else %}-{% endfor %}
+            <td class="small">
+              {{ server.username + "@" if server.username else "" }}{{ server.host or "-" }}{% if server.port %}:{{ server.port }}{% endif %}
+              <div class="text-muted">{{ server.collector_type }}</div>
             </td>
-            <td>
-              <form method="post" action="/servers/resources/delete" onsubmit="return confirm('이 날짜 자료를 지울까요?');">
-                <input type="hidden" name="server" value="{{ group.server }}">
-                <input type="hidden" name="date" value="{{ item.date }}">
-                <button class="btn btn-sm btn-outline-danger" type="submit">삭제</button>
-              </form>
+            <td class="small">
+              {% if server.auth_type == "password" %}비밀번호
+              {% elif server.auth_type == "agent" %}에이전트
+              {% else %}개인키{% endif %}
+            </td>
+            <td class="small">
+              {% if chosen %}{{ chosen | join(", ") }}{% else %}<span class="text-muted">기본</span>{% endif %}
+            </td>
+            <td class="small">
+              {{ group.count if group else 0 }}일
+              <div class="text-muted">{{ server.last_resource_at | ts }}</div>
+            </td>
+            <td class="text-nowrap text-end">
+              <div class="d-flex justify-content-end gap-1">
+                <form method="post" action="/servers/resources/{{ server.id }}/collect">
+                  <button class="btn btn-sm btn-primary" type="submit">지금 수집</button>
+                </form>
+                <button
+                  class="btn btn-sm btn-outline-secondary"
+                  type="button"
+                  data-bs-toggle="modal"
+                  data-bs-target="#resourceUploadModal"
+                  data-server-name="{{ server.name }}"
+                >데이터 넣기</button>
+                <a class="btn btn-sm btn-outline-secondary" href="/servers/resources/{{ server.id }}/edit">수정</a>
+              </div>
             </td>
           </tr>
-          {% endfor %}
         {% endfor %}
+          <tr id="server-search-empty" class="d-none">
+            <td colspan="6" class="p-4 text-muted">조건에 맞는 서버가 없습니다.</td>
+          </tr>
         </tbody>
       </table>
     </div>
     {% else %}
-    <div class="p-4 text-muted">아직 넣은 자료가 없습니다.</div>
+    <div class="p-4 text-muted">아직 등록한 서버가 없습니다. 오른쪽 위 서버 등록하기를 눌러 접속 정보를 넣으세요.</div>
     {% endif %}
   </div>
 </div>
+
+<div class="modal fade" id="resourceUploadModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">데이터 넣기 · <span id="resourceModalServer"></span></h5>
+        <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="닫기"></button>
+      </div>
+      <div class="modal-body">
+        <form method="post" action="/servers/resources" enctype="multipart/form-data">
+          <input type="hidden" name="bind_server" id="resourceBindServer" value="">
+          <input type="hidden" name="server" id="resourceServer" value="">
+          <div class="row gx-3">
+            <div class="col-md-5 mb-3">
+              <label class="small mb-1" for="date">날짜</label>
+              <input class="form-control" id="date" name="date" type="date" value="{{ today }}">
+            </div>
+            <div class="col-md-7 mb-3">
+              <label class="small mb-1" for="files">JSON 파일 (여러 개 가능)</label>
+              <input class="form-control" id="files" name="files" type="file" accept=".json,application/json" multiple>
+              <ul class="upload-file-list list-unstyled mb-0 mt-2" id="upload-file-list"></ul>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end">
+            <button class="btn btn-primary" type="submit" id="upload-submit">넣기</button>
+          </div>
+        </form>
+        <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
+          <div class="small fw-semibold">이 서버 자료</div>
+          <div class="small text-muted">날짜를 더블클릭하면 그날 수집 내용을 봅니다.</div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr><th>날짜</th><th class="text-end"></th></tr>
+            </thead>
+            <tbody id="resourceModalRows">
+              <tr><td colspan="2" class="text-muted">아직 넣은 자료가 없습니다.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal fade" id="snapshotViewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">수집 내용 · <span id="snapshotViewTitle"></span></h5>
+        <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="닫기"></button>
+      </div>
+      <div class="modal-body" id="snapshotViewBody"></div>
+    </div>
+  </div>
+</div>
+<script type="application/json" id="resource-groups">{{ group_map_json | safe }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/guardian-resources.js"></script>
+<script src="/static/js/guardian-server-form.js"></script>
 {% endblock %}

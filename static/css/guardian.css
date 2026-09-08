@@ -28,6 +28,25 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.report-list-table td.report-summary,
+.report-list-table th.report-summary {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.report-list-table th.report-actions,
+.report-list-table td.report-actions {
+  position: sticky;
+  right: 0;
+  background: #fff;
+  text-align: right;
+  box-shadow: -8px 0 10px -8px rgba(22, 28, 36, 0.18);
+  z-index: 1;
+}
+.report-list-table thead th.report-actions {
+  z-index: 2;
+}
 .guardian-log {
   margin: 0;
   padding: 1rem;
@@ -39,8 +58,10 @@ body {
   overflow: auto;
 }
 .guardian-report-frame {
+  display: block;
   width: 100%;
-  min-height: 28rem;
+  height: 75vh;
+  min-height: 48rem;
   border: 1px solid #e3e6ec;
   border-radius: 0.35rem;
   background: #fff;
@@ -112,4 +133,185 @@ body {
   top: 0;
   background: #fff;
   z-index: 1;
+}
+#collecting {
+  scroll-margin-top: 5.5rem;
+}
+.sidenav-menu-nested .nav-link {
+  font-size: 11px;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+.guardian-picker {
+  position: relative;
+}
+.guardian-picker-toggle {
+  cursor: pointer;
+}
+.guardian-picker-toggle:focus {
+  box-shadow: 0 0 0 0.2rem rgba(0, 97, 242, 0.2);
+}
+.guardian-picker-menu {
+  width: 100%;
+  max-height: 18rem;
+  overflow: auto;
+  padding: 0.35rem;
+  border: 1px solid #e3e6ec;
+  border-radius: 0.4rem;
+}
+.guardian-picker-menu .dropdown-item {
+  border-radius: 0.3rem;
+  padding: 0.45rem 0.6rem;
+  white-space: normal;
+}
+.guardian-picker-menu .dropdown-item + .dropdown-item {
+  margin-top: 0.15rem;
+}
+.guardian-picker-menu .dropdown-item.active {
+  background: #e5efff;
+  color: #0d4ba0;
+}
+.guardian-picker-name {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+}
+.guardian-picker-desc {
+  display: block;
+  font-size: 11px;
+  color: #69707a;
+}
+.guardian-picker-menu .dropdown-item.active .guardian-picker-desc {
+  color: #3f6cae;
+}
+.upload-file-list {
+  max-height: 12rem;
+  overflow: auto;
+}
+.upload-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid #f1f3f5;
+}
+.upload-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-file-remove {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+  line-height: 1;
+  font-size: 11px;
+  border: 1px solid #c5cdd6;
+  border-radius: 0.2rem;
+  background: #fff;
+  color: #69707a;
+}
+.upload-file-remove:hover {
+  border-color: #e81500;
+  color: #e81500;
+}
+.resource-server-row:hover {
+  background: #f8f9fa;
+}
+#snapshotViewModal {
+  z-index: 1090;
+}
+.snapshot-row {
+  cursor: pointer;
+  user-select: none;
+}
+.snapshot-row:hover {
+  background: #f4f7fb;
+}
+.snap-report {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+.snap-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+.snap-kpi {
+  background: #f6f8fb;
+  border: 1px solid #e6ebf1;
+  border-radius: 0.55rem;
+  padding: 0.85rem 1rem;
+}
+.snap-kpi-label {
+  font-size: 12px;
+  color: #69707a;
+  margin-bottom: 0.2rem;
+}
+.snap-kpi-value {
+  font-size: 1.45rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+.snap-kpi-note {
+  margin-top: 0.25rem;
+  font-size: 12px;
+  color: #69707a;
+}
+.snap-section h6 {
+  font-size: 13px;
+  font-weight: 650;
+  margin-bottom: 0.5rem;
+}
+.snap-table th {
+  font-size: 12px;
+  color: #69707a;
+  font-weight: 600;
+  border-bottom-width: 1px;
+}
+.snap-pairs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.45rem 1rem;
+}
+.snap-pair {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #f1f3f5;
+}
+.snap-pair-key {
+  color: #69707a;
+  font-size: 12px;
+}
+.snap-pair-val {
+  font-weight: 600;
+  text-align: right;
+}
+.module-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  margin-left: 0.2rem;
+  border: 1px solid #c5ccd6;
+  border-radius: 50%;
+  color: #687385;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 1px;
+  cursor: help;
+  background: #fff;
+}
+.module-help:hover,
+.module-help:focus {
+  border-color: #0061f2;
+  color: #0061f2;
+  outline: none;
 }

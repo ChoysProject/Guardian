@@ -1,0 +1,21 @@
+name: resource_basic
+stage: 4
+version: '1.0'
+type: resource_script
+enabled: true
+description: CPU·메모리·디스크·인스턴스 상태를 한 번에 찍어 오는 기본 수집 스크립트
+targets:
+- '*'
+config:
+  modules:
+  - cpu_usage
+  - cpu_load
+  - cpu_core_count
+  - cpu_ctxswitch
+  - mem_usage
+  - mem_available
+  - mem_swap
+  - disk_usage
+  - proc_top_cpu
+  - proc_service_alive
+  instances: []

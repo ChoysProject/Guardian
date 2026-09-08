@@ -29,3 +29,7 @@ def test_checkpoint_pages_without_db(tmp_path, monkeypatch):
     second = page_cursors(50, PAGE_SIZE)
     assert len(second["items"]) == 13
     assert second["has_more"] is False
+    only_web = page_cursors(0, PAGE_SIZE, server_id=1)
+    assert only_web["total"] == 63
+    missing = page_cursors(0, PAGE_SIZE, server_id=9)
+    assert missing["total"] == 0

@@ -11,6 +11,7 @@ from app.db import dump_json
 from app.metrics import wall_now
 from app.cursors import delete_for_servers
 from app.models import Server
+from app.resources import write_sample_snapshots
 
 DEMO_LOG = ROOT / "sample_logs" / "demo.log"
 LAYOUT_STAMP = ROOT / "sample_logs" / ".layout_v2"
@@ -44,6 +45,30 @@ def seed_demo(db: Session) -> None:
     if refresh:
         _reset_cursors(db, names)
         LAYOUT_STAMP.write_text("v2\n", encoding="utf-8")
+    _ensure_demo_instances(db)
+    write_sample_snapshots(days=7, force=False)
+
+
+DEMO_INSTANCES = {
+    "demo-local": ["was", "sshd"],
+    "demo-web": ["nginx", "php-fpm"],
+    "demo-db": ["postgres", "listener"],
+    "demo-auth": ["sshd"],
+}
+
+
+def _ensure_demo_instances(db: Session) -> None:
+    """데모 서버에 인스턴스 목록을 한 번 채워 둔다. 사용자가 고친 값은 그대로 둔다."""
+    import json
+
+    for name, instances in DEMO_INSTANCES.items():
+        server = db.query(Server).filter(Server.name == name).one_or_none()
+        if server is None:
+            continue
+        server.collect_resources = True
+        if not (server.instances or "").strip("[] \n"):
+            server.instances = json.dumps(instances, ensure_ascii=False)
+    db.commit()
 
 
 def _ensure_server(db: Session, name: str, host: str, log_paths: list[str]) -> Server:

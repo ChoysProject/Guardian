@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <title>{{ app_name }} · {{ title | default("로그 감시") }}</title>
   <link href="/static/vendor/sb-admin-pro/css/styles.css" rel="stylesheet">
-  <link href="/static/css/guardian.css" rel="stylesheet">
+  <link href="/static/css/guardian.css?v=module-help-2" rel="stylesheet">
   <link rel="icon" type="image/png" href="/static/vendor/sb-admin-pro/assets/img/favicon.png">
   <script src="/static/vendor/feather.min.js"></script>
 </head>
@@ -42,8 +42,8 @@
             </a>
             <div class="collapse {% if servers_open %}show{% endif %}" id="collapseServers" data-bs-parent="#accordionSidenav">
               <nav class="sidenav-menu-nested nav">
-                <a class="nav-link {% if request.url.path == '/servers' %}active{% endif %}" href="/servers">수집 대상 서버</a>
-                <a class="nav-link {% if request.url.path.startswith('/servers/resources') %}active{% endif %}" href="/servers/resources">서버 리소스 분석</a>
+                <a class="nav-link {% if request.url.path.startswith('/servers/resources') %}active{% endif %}" href="/servers/resources">리소스 및 성능 수집 대상 서버</a>
+                <a class="nav-link {% if request.url.path.startswith('/servers/logs') %}active{% endif %}" href="/servers/logs">로그 수집 대상 서버</a>
               </nav>
             </div>
             <a class="nav-link {% if request.url.path.startswith('/findings') %}active{% endif %}" href="/findings">
@@ -58,14 +58,25 @@
             </a>
             <div class="collapse {% if reports_open %}show{% endif %}" id="collapseReports" data-bs-parent="#accordionSidenav">
               <nav class="sidenav-menu-nested nav">
-                <a class="nav-link {% if request.url.path == '/reports' %}active{% endif %}" href="/reports">로그 보고서</a>
-                <a class="nav-link {% if request.url.path.startswith('/reports/resources') %}active{% endif %}" href="/reports/resources">리소스 분석 보고서</a>
+                <a class="nav-link {% if request.url.path.startswith('/reports/resources') %}active{% endif %}" href="/reports/resources">리소스 및 성능 보고서</a>
+                <a class="nav-link {% if request.url.path == '/reports' %}active{% endif %}" href="/reports">로그 분석 보고서</a>
               </nav>
             </div>
-            <a class="nav-link {% if request.url.path.startswith('/plugins') %}active{% endif %}" href="/plugins">
+            {% set plugins_open = request.url.path.startswith('/plugins') %}
+            {% set plugins_script = request.url.path.startswith('/plugins/resources') or request.url.path.startswith('/plugins/4/') or (request.url.path == '/plugins/new' and request.query_params.get('stage') == '4') %}
+            {% set plugins_resource = request.url.path.startswith('/plugins/resource-plugins') %}
+            <a class="nav-link {% if not plugins_open %}collapsed{% endif %}" href="javascript:void(0);" data-bs-toggle="collapse" data-bs-target="#collapsePlugins" aria-expanded="{{ 'true' if plugins_open else 'false' }}" aria-controls="collapsePlugins">
               <div class="nav-link-icon"><i data-feather="sliders"></i></div>
               플러그인
+              <div class="sidenav-collapse-arrow"><i data-feather="chevron-down"></i></div>
             </a>
+            <div class="collapse {% if plugins_open %}show{% endif %}" id="collapsePlugins" data-bs-parent="#accordionSidenav">
+              <nav class="sidenav-menu-nested nav">
+                <a class="nav-link {% if plugins_script %}active{% endif %}" href="/plugins/resources">리소스 및 성능 쉘 스크립트</a>
+                <a class="nav-link {% if plugins_resource %}active{% endif %}" href="/plugins/resource-plugins">리소스 및 성능 플러그인</a>
+                <a class="nav-link {% if plugins_open and not plugins_script and not plugins_resource %}active{% endif %}" href="/plugins/logs">로그 분석 플러그인</a>
+              </nav>
+            </div>
             <div class="sidenav-menu-heading">시스템</div>
             <a class="nav-link {% if request.url.path.startswith('/settings') %}active{% endif %}" href="/settings">
               <div class="nav-link-icon"><i data-feather="settings"></i></div>
@@ -112,6 +123,7 @@
   </div>
   <script src="/static/vendor/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/sb-admin-pro/js/scripts.js"></script>
+  <script src="/static/js/guardian-scroll.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

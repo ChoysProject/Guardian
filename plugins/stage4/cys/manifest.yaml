@@ -1,0 +1,32 @@
+name: cys
+stage: 4
+version: '1.0'
+type: resource_script
+enabled: true
+description: cys 리소스 수집
+targets:
+- '*'
+config:
+  modules:
+  - cpu_usage
+  - cpu_load
+  - cpu_core_count
+  - cpu_ctxswitch
+  - mem_usage
+  - mem_available
+  - mem_swap
+  - disk_usage
+  - disk_iowait
+  - disk_iops
+  - disk_dir_size
+  - net_connections
+  - proc_top_cpu
+  - proc_zombie
+  - proc_service_alive
+  - os_info
+  - os_uptime
+  - sec_failed_login
+  instances:
+  - kakaotalk
+  - docker
+  - cursor

@@ -1,9 +1,13 @@
 {% extends "base.html" %}
-{% set title = "리소스 분석 보고서" %}
-{% set heading = "리소스 분석 보고서" %}
+{% set title = "리소스 및 성능 보고서" %}
+{% set heading = "리소스 및 성능 보고서" %}
 {% block content %}
 <div class="d-flex align-items-center mb-3 report-toolbar">
-  <div class="alert alert-info mb-0 flex-grow-1" role="alert">서버 리소스 분석에 넣은 일자별 자료로, 최근 {{ days }}일 추이(평균·최대·방향, 인스턴스 이상)를 서버별 보고서로 만듭니다.</div>
+  <div class="alert alert-info mb-0 flex-grow-1" role="alert">
+    리소스 및 성능 수집 대상 서버에 쌓인 일자별 자료로, 최근 {{ days }}일 추이를 서버별 보고서로 만듭니다.
+    평균·최대·방향에 더해 디스크 소진 예상일, 바쁜 시간대, 인스턴스별 CPU·메모리·재시작을 함께 봅니다.
+    {% if openai_enabled %}<span class="fw-semibold">AI 총평도 함께 붙습니다.</span>{% else %}<span class="text-muted">AI는 꺼져 있어 규칙 요약만 나옵니다.</span>{% endif %}
+  </div>
   <div class="dropdown ms-3 flex-shrink-0">
     <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">추이 보고서 생성</button>
     <div class="dropdown-menu dropdown-menu-end p-3 report-picker">
@@ -28,9 +32,9 @@
   <div class="card-body p-0">
     {% if reports %}
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0 report-list-table">
         <thead>
-          <tr><th>제목</th><th>플러그인</th><th>기간</th><th>요약</th><th></th></tr>
+          <tr><th>제목</th><th>플러그인</th><th>기간</th><th class="report-summary">요약</th><th class="report-actions"></th></tr>
         </thead>
         <tbody>
         {% for item in reports %}
@@ -38,8 +42,8 @@
             <td><a href="/reports/{{ item.id }}">{{ item.title }}</a></td>
             <td>{{ item.plugin }}</td>
             <td>{{ item.period_start.date() }} ~ {{ item.period_end.date() }}</td>
-            <td>{{ item.summary }}</td>
-            <td class="text-nowrap">
+            <td class="report-summary" title="{{ item.summary }}">{{ item.summary }}</td>
+            <td class="report-actions">
               <form method="post" action="/reports/{{ item.id }}/delete" onsubmit="return confirm('이 보고서를 삭제할까요?');">
                 <button class="btn btn-sm btn-outline-danger" type="submit">삭제</button>
               </form>
@@ -50,7 +54,7 @@
       </table>
     </div>
     {% else %}
-    <div class="p-4 text-muted">아직 리소스 분석 보고서가 없습니다.</div>
+    <div class="p-4 text-muted">아직 리소스 및 성능 보고서가 없습니다.</div>
     {% endif %}
   </div>
 </div>

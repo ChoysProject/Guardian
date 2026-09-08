@@ -91,11 +91,15 @@ def delete_for_servers(server_ids: list[int]) -> None:
     save_all(kept)
 
 
-def page_cursors(offset: int = 0, limit: int = PAGE_SIZE) -> dict:
+def page_cursors(offset: int = 0, limit: int = PAGE_SIZE, server_id: int | None = None) -> dict:
     start = max(int(offset or 0), 0)
     size = max(min(int(limit or PAGE_SIZE), 200), 1)
+    items = load_all()
+    if server_id is not None:
+        wanted = int(server_id)
+        items = [item for item in items if int(item.get("server_id") or 0) == wanted]
     items = sorted(
-        load_all(),
+        items,
         key=lambda item: (str(item.get("server_name") or ""), str(item.get("log_path") or "")),
     )
     total = len(items)
