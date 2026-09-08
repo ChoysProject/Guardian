@@ -56,9 +56,13 @@ def test_health_and_dashboard_and_pipeline():
         assert "items" in payload and "has_more" in payload
         assert payload["limit"] == 50
 
-        plugins_page = client.get("/plugins")
+        plugins_page = client.get("/plugins", follow_redirects=True)
         assert plugins_page.status_code == 200
-        assert "Stage 2" in plugins_page.text
+        assert "리소스 및 성능 쉘 스크립트" in plugins_page.text
+        assert "리소스 및 성능 플러그인" in plugins_page.text
+        log_plugins = client.get("/plugins/logs")
+        assert log_plugins.status_code == 200
+        assert "Stage 2" in log_plugins.text
         new_plugin = client.get("/plugins/new?stage=2&server=demo-local")
         assert new_plugin.status_code == 200
         assert "demo-local_rules" in new_plugin.text

@@ -1,0 +1,75 @@
+<div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+  <div class="small fw-semibold">수집 모듈</div>
+  <a
+    class="btn btn-sm btn-outline-secondary"
+    id="script-download"
+    href="{% if plugin is defined and plugin.stage == 4 %}/plugins/4/{{ plugin.name }}/script.zip{% else %}/plugins/resources/preview.zip{% endif %}"
+    title="이름/collect.sh 와 DailyData/ 가 든 zip"
+  >스크립트 받기</a>
+</div>
+<div class="small text-muted mb-3">
+  결과는 표준출력으로도 찍고, 스크립트 옆 <code>DailyData/날짜.json</code> 으로도 남깁니다.
+  서버의 수집 경로를 그 폴더(또는 스크립트 폴더)로 맞추면 나중에 다시 가져올 수 있습니다. 원격 권한은 바꾸지 않습니다.
+</div>
+{% for group in module_catalog %}
+<div class="mb-3">
+  <div class="small fw-semibold mb-1">{{ group.name }}</div>
+  <div class="row gx-2">
+    {% for item in group.modules %}
+    <div class="col-md-6">
+      <div class="form-check mb-1">
+        <input
+          class="form-check-input module-check"
+          type="checkbox"
+          name="modules"
+          value="{{ item.id }}"
+          id="mod-{{ item.id }}"
+          {% if item.id in selected_modules %}checked{% endif %}
+        >
+        <label class="form-check-label small" for="mod-{{ item.id }}">
+          <span class="fw-semibold">{{ item.name }}</span>
+          <span class="text-muted"> · {{ item.desc }}</span>
+          {% if item.help %}
+          <span
+            class="module-help"
+            tabindex="0"
+            data-bs-toggle="tooltip"
+            data-bs-placement="bottom"
+            data-bs-container="body"
+            title="{{ item.help }}"
+          >!</span>
+          {% endif %}
+          <span class="d-block text-muted" style="font-size:11px">{{ item.primary }}{% if item.fallback and item.fallback != '-' %} / {{ item.fallback }}{% endif %}</span>
+        </label>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+<div class="mb-3">
+  <label class="small mb-1">인스턴스 검색</label>
+  <div class="form-text mb-2">이름을 넣으면 <code>ps</code>/<code>grep</code> 으로 그 프로세스 정보를 모으는 스크립트가 추가됩니다. 예: qry-api</div>
+  <div id="plugin-instance-list" class="row gx-2">
+    {% for inst in plugin_instances|default([]) %}
+    <div class="col-md-4 mb-2 plugin-instance-item">
+      <div class="input-group input-group-sm">
+        <input class="form-control plugin-instance-name" name="plugin_instances" value="{{ inst }}" placeholder="qry-api">
+        <button class="btn btn-outline-secondary plugin-instance-remove" type="button" aria-label="빼기">−</button>
+      </div>
+    </div>
+    {% else %}
+    <div class="col-md-4 mb-2 plugin-instance-item">
+      <div class="input-group input-group-sm">
+        <input class="form-control plugin-instance-name" name="plugin_instances" placeholder="qry-api">
+        <button class="btn btn-outline-secondary plugin-instance-remove" type="button" aria-label="빼기">−</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <button class="btn btn-sm btn-outline-secondary" type="button" id="plugin-instance-add">인스턴스 추가</button>
+</div>
+<div class="mb-0">
+  <label class="small mb-1" for="script">만들어질 수집 스크립트</label>
+  <textarea class="form-control font-monospace" id="script" name="script" rows="14" readonly>{{ preview_script or script }}</textarea>
+</div>

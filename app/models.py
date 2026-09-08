@@ -29,6 +29,7 @@ class Server(Base):
     collect_resources: Mapped[bool] = mapped_column(Boolean, default=False)
     instances: Mapped[str] = mapped_column(Text, default="[]")
     plugins: Mapped[str] = mapped_column(Text, default="[]")
+    collect_path: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_collect_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_error: Mapped[str] = mapped_column(Text, default="")
@@ -155,6 +156,7 @@ def init_db() -> None:
             ("last_resource_at", "DATETIME"),
             ("last_resource_error", "TEXT DEFAULT ''"),
             ("note", "TEXT DEFAULT ''"),
+            ("collect_path", "TEXT DEFAULT ''"),
         ]
         with engine.begin() as conn:
             for column, ddl in added:

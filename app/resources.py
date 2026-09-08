@@ -14,6 +14,8 @@ RESOURCE_PLUGIN = "resource_report"
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SERVER_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 OK_VALUES = {"ok", "up", "running", "true", "1", "yes", "on"}
+# 셸이 숫자 자리를 비워 둔 경우: "count": } / "count": ,
+_EMPTY_JSON_VALUE = re.compile(r'":\s*([,}\]])')
 
 SAMPLE_JSON = {
     "server": "eai-01",
@@ -328,6 +330,11 @@ def normalize_snapshot(
     return snapshot
 
 
+def _repair_loose_json(text: str) -> str:
+    """수집 스크립트가 숫자를 비워 둔 JSON을 고친다. 예: {"count": } → {"count": null}."""
+    return _EMPTY_JSON_VALUE.sub(r'": null\1', text)
+
+
 def parse_payload(text: str, *, fallback_server: str = "", fallback_date: str = "") -> list[dict[str, Any]]:
     raw_text = (text or "").strip()
     if not raw_text:
@@ -335,7 +342,10 @@ def parse_payload(text: str, *, fallback_server: str = "", fallback_date: str = 
     try:
         loaded = json.loads(raw_text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"JSON 형식이 아닙니다: {exc}") from exc
+        try:
+            loaded = json.loads(_repair_loose_json(raw_text))
+        except json.JSONDecodeError:
+            raise ValueError(f"JSON 형식이 아닙니다: {exc}") from exc
     rows: list[Any]
     if isinstance(loaded, list):
         rows = loaded
@@ -403,6 +413,43 @@ def list_snapshots() -> list[dict[str, Any]]:
     return rows
 
 
+def import_snapshots_from_path(server: str, path: str) -> tuple[int, list[str]]:
+    """수집 경로에 놓인 JSON 파일을 전부 다시 읽어 스냅샷으로 저장한다.
+
+    경로가 폴더면 그 안의 ``*.json`` 과 ``DailyData/*.json`` 을 전부, 파일이면 그 파일 하나만 읽는다.
+    파일 하나가 잘못돼도 나머지는 계속 넣고, 실패한 파일 이름만 사유와 함께 돌려준다.
+    """
+    clean = (path or "").strip()
+    if not clean:
+        raise ValueError("수집 경로가 비어 있습니다.")
+    target = Path(clean).expanduser()
+    if not target.exists():
+        raise ValueError(f"수집 경로를 찾을 수 없습니다: {clean}")
+    if target.is_dir():
+        files = sorted(target.glob("*.json"))
+        daily = target / "DailyData"
+        if daily.is_dir():
+            files.extend(sorted(daily.glob("*.json")))
+    else:
+        files = [target]
+    if not files:
+        raise ValueError(f"경로에 JSON 파일이 없습니다: {clean}")
+    saved = 0
+    errors: list[str] = []
+    for file_path in files:
+        try:
+            text = file_path.read_text(encoding="utf-8")
+            for snapshot in parse_payload(text, fallback_server=server, fallback_date=""):
+                snapshot["server"] = server
+                save_snapshot(snapshot)
+                saved += 1
+        except (ValueError, OSError) as exc:
+            errors.append(f"{file_path.name}: {exc}")
+    if not saved and errors:
+        raise ValueError("; ".join(errors[:5]))
+    return saved, errors
+
+
 def snapshots_for(server: str, *, days: int = 7, end: str | None = None) -> list[dict[str, Any]]:
     last = end or today_stamp()
     last_day = datetime.strptime(last, "%Y-%m-%d")
@@ -429,7 +476,7 @@ def _avg(values: list[float]) -> float | None:
 
 def _direction(values: list[float]) -> str:
     if len(values) < 2:
-        return "데이터 부족"
+        return "유지"
     delta = values[-1] - values[0]
     if delta >= 3:
         return "상승"
@@ -469,6 +516,200 @@ def _busy_hours(hour_cpu: dict[str, list[float]], hour_mem: dict[str, list[float
     return rows[:3]
 
 
+EXTRA_TEXT_FIELDS = {
+    "kernel",
+    "distro",
+    "since",
+    "instance_type",
+    "path",
+    "name",
+    "cmd",
+    "detail",
+    "device",
+    "iface",
+    "proto",
+    "local",
+}
+EXTRA_SKIP = {
+    "empty",
+    "status",
+    "error",
+    "cpu_usage",
+    "mem_usage",
+    "disk_usage",
+    "instance_search",
+    "proc_service_alive",
+    "proc_top_cpu",
+}
+FIELD_LABELS = {
+    "load1": "1분",
+    "load5": "5분",
+    "load15": "15분",
+    "cores": "코어",
+    "steal_pct": "Steal %",
+    "cs": "CS",
+    "in": "Interrupt",
+    "available_mb": "Available MB",
+    "used_pct": "사용률",
+    "used_mb": "사용 MB",
+    "total_mb": "전체 MB",
+    "hits": "건수",
+    "iowait_pct": "I/O Wait %",
+    "bytes": "용량(B)",
+    "path": "경로",
+    "established": "ESTABLISHED",
+    "count": "건수",
+    "open": "열린 수",
+    "distro": "배포판",
+    "kernel": "커널",
+    "since": "부팅",
+    "instance_type": "인스턴스 타입",
+    "ntp_synchronized": "NTP 동기",
+    "lines": "crontab 줄",
+    "inode_pct": "inode %",
+    "mount": "마운트",
+    "device": "장치",
+    "iface": "인터페이스",
+    "rx_bytes": "RX",
+    "tx_bytes": "TX",
+    "rx_drop": "RX drop",
+    "tx_drop": "TX drop",
+    "rx_err": "RX err",
+    "tx_err": "TX err",
+    "r_s": "r/s",
+    "w_s": "w/s",
+    "reads": "읽기",
+    "writes": "쓰기",
+    "name": "이름",
+    "cpu_pct": "CPU",
+    "mem_pct": "MEM",
+    "proto": "프로토콜",
+    "local": "로컬",
+}
+WARN_FIELDS = {
+    ("cpu_steal", "steal_pct"): (5, 15),
+    ("disk_iowait", "iowait_pct"): (15, 30),
+    ("disk_inode", "inode_pct"): (80, 90),
+    ("mem_swap", "used_pct"): (10, 30),
+    ("mem_oom", "hits"): (1, 1),
+    ("proc_zombie", "count"): (1, 5),
+    ("sec_failed_login", "count"): (10, 50),
+}
+
+
+def _extra_title(key: str) -> str:
+    from app.resource_script import module_by_id
+
+    spec = module_by_id(key)
+    if spec:
+        return str(spec.get("name") or key)
+    return key
+
+
+def _extra_blank(value: Any) -> bool:
+    if value is None or value == "":
+        return True
+    if isinstance(value, dict):
+        useful = {k: v for k, v in value.items() if k not in ("status", "error")}
+        if value.get("status") in {"unavailable", "skipped"} and not useful:
+            return True
+        if not useful and value.get("status"):
+            return True
+    return isinstance(value, list) and not value
+
+
+def _field_level(key: str, field: str, value: Any) -> str:
+    if isinstance(value, bool):
+        if key == "os_ntp_sync" and field == "ntp_synchronized":
+            return "ok" if value else "danger"
+        return "ok" if value else "warn"
+    num = _as_num(value)
+    if num is None:
+        return ""
+    warn, danger = WARN_FIELDS.get((key, field), (None, None))
+    if warn is None:
+        if field in {"used_pct", "usage_pct", "inode_pct"}:
+            warn, danger = 80, 90
+        else:
+            return ""
+    if num >= danger:
+        return "danger"
+    if num >= warn:
+        return "warn"
+    return "ok"
+
+
+def _pct_level(value: float | None, *, warn: float = 70, danger: float = 85) -> str:
+    if value is None:
+        return ""
+    if value >= danger:
+        return "danger"
+    if value >= warn:
+        return "warn"
+    return "ok"
+
+
+def _analyze_extras(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[str, Any] = {}
+    days: dict[str, int] = {}
+    nums: dict[str, dict[str, list[float]]] = {}
+    for item in items:
+        extra = item.get("extra")
+        if not isinstance(extra, dict):
+            continue
+        for key, body in extra.items():
+            if key in EXTRA_SKIP or _extra_blank(body):
+                continue
+            if isinstance(body, list) and body and isinstance(body[0], dict) and "mount" in body[0]:
+                body = [
+                    row
+                    for row in body
+                    if isinstance(row, dict)
+                    and not _is_noise_mount(str(row.get("mount") or ""), row.get("total_gb"))
+                ]
+                if _extra_blank(body):
+                    continue
+            latest[key] = body
+            days[key] = days.get(key, 0) + 1
+            rows = body if isinstance(body, list) else [body] if isinstance(body, dict) else []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                for field, val in row.items():
+                    if field in ("status", "error") or field in EXTRA_TEXT_FIELDS:
+                        continue
+                    num = _as_num(val)
+                    if num is None:
+                        continue
+                    nums.setdefault(key, {}).setdefault(field, []).append(num)
+    from app.resource_script import catalog
+
+    order = [item["id"] for group in catalog() for item in group["modules"]]
+    extras = []
+    for key in [*order, *latest.keys()]:
+        if key not in latest or any(row["key"] == key for row in extras):
+            continue
+        stats = {}
+        for field, values in (nums.get(key) or {}).items():
+            stats[field] = {
+                "avg": _avg(values),
+                "max": max(values) if values else None,
+                "last": values[-1] if values else None,
+                "direction": _direction(values),
+                "level": _field_level(key, field, values[-1] if values else None),
+            }
+        extras.append(
+            {
+                "key": key,
+                "title": _extra_title(key),
+                "days": days.get(key, 0),
+                "latest": latest[key],
+                "stats": stats,
+            }
+        )
+    return extras
+
+
 def analyze_server(server: str, *, days: int = 7, end: str | None = None) -> dict[str, Any]:
     from app.server_modes import get_instances
 
@@ -479,6 +720,8 @@ def analyze_server(server: str, *, days: int = 7, end: str | None = None) -> dic
     cpu_peak = _series([((item.get("cpu") or {}).get("peak_pct")) for item in items])
     mem_peak = _series([((item.get("mem") or {}).get("peak_pct")) for item in items])
     swap = _series([((item.get("mem") or {}).get("swap_used_pct")) for item in items])
+    load1 = _series([((item.get("cpu") or {}).get("load1")) for item in items])
+    cores = _series([((item.get("cpu") or {}).get("cores")) for item in items])
     disk_rows: dict[str, list[float]] = {}
     disk_last: dict[str, dict[str, Any]] = {}
     instance_fail: dict[str, list[str]] = {}
@@ -581,6 +824,9 @@ def analyze_server(server: str, *, days: int = 7, end: str | None = None) -> dic
             "direction": _direction(cpu),
             "peak_avg": _avg(cpu_peak),
             "peak_max": max(cpu_peak) if cpu_peak else None,
+            "load1_avg": _avg(load1),
+            "load1_last": load1[-1] if load1 else None,
+            "cores": cores[-1] if cores else None,
             "series": cpu,
         },
         "mem": {
@@ -592,13 +838,14 @@ def analyze_server(server: str, *, days: int = 7, end: str | None = None) -> dic
             "swap_max": max(swap) if swap else None,
             "series": mem,
         },
-        "disks": disks,
+        "disks": _notable_disks(disks),
         "busy_hours": _busy_hours(hour_cpu, hour_mem),
         "top_processes": top_processes,
         "instances": registered,
         "instances_detail": instances_detail,
         "instance_fail": instance_fail,
         "instance_missing": instance_missing,
+        "extras": _analyze_extras(items),
         "items": items,
     }
 
@@ -850,11 +1097,154 @@ def resource_payload(analysis: dict[str, Any]) -> dict[str, Any]:
         "instances": analysis.get("instances_detail") or [],
         "instance_fail_days": analysis.get("instance_fail") or {},
         "instance_missing_days": analysis.get("instance_missing") or {},
+        "extras": [
+            {
+                "key": row.get("key"),
+                "title": row.get("title"),
+                "days": row.get("days"),
+                "stats": row.get("stats") or {},
+            }
+            for row in (analysis.get("extras") or [])
+        ],
     }
 
 
 def _fmt_gb(value: float | None) -> str:
     return "-" if value is None else f"{value}GB"
+
+
+def _fmt_field(value: Any) -> str:
+    if isinstance(value, bool):
+        return "예" if value else "아니오"
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else str(value)
+    if value is None or value == "":
+        return "-"
+    return str(value)
+
+
+def _field_label(key: str) -> str:
+    return FIELD_LABELS.get(key, key)
+
+
+def _stat_line(stats: dict[str, Any]) -> str:
+    parts = []
+    for field, row in stats.items():
+        last = row.get("last")
+        bits = [f"{_field_label(field)} 최근 {_fmt_field(last)}"]
+        if row.get("avg") is not None and row.get("avg") != last:
+            bits.append(f"평균 {_fmt_field(row.get('avg'))}")
+        if row.get("max") is not None and row.get("max") != last:
+            bits.append(f"최대 {_fmt_field(row.get('max'))}")
+        if row.get("direction") and row.get("direction") not in {"유지", "데이터 부족"}:
+            bits.append(str(row["direction"]))
+        parts.append(", ".join(bits))
+    return " · ".join(parts)
+
+
+def _latest_pairs(latest: Any) -> list[tuple[str, Any]]:
+    if isinstance(latest, dict):
+        return [(key, val) for key, val in latest.items() if key not in ("status", "error") and val not in (None, "")]
+    return []
+
+
+def _latest_rows(latest: Any) -> list[dict[str, Any]]:
+    if isinstance(latest, list):
+        return [row for row in latest if isinstance(row, dict)]
+    return []
+
+
+_NOISE_MOUNT = re.compile(
+    r"^/(snap|dev|run|proc|sys|init|boot/efi)(/|$)|^/mnt/wsl|^/usr/lib/(modules|wsl)"
+    r"|^/var/snap|^/var/lib/snapd|versions\.txt$"
+)
+_DISK_ALIAS = {
+    "/": "시스템 디스크",
+    "/var": "로그 · 가변 데이터",
+    "/home": "홈",
+    "/data": "데이터",
+    "/opt": "응용 프로그램",
+    "/mnt/c": "Windows C:",
+}
+
+
+def _is_noise_mount(mount: str, total_gb: float | None = None) -> bool:
+    path = (mount or "").strip()
+    if not path or _NOISE_MOUNT.search(path) or path.startswith("/mnt/wslg"):
+        return True
+    if total_gb is not None and total_gb < 2 and path not in _DISK_ALIAS:
+        return True
+    return False
+
+
+def _disk_alias(mount: str) -> str:
+    return _DISK_ALIAS.get(mount, mount)
+
+
+def _notable_disks(disks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    kept = [row for row in disks if not _is_noise_mount(str(row.get("mount") or ""), row.get("total_gb"))]
+    kept.sort(key=lambda row: (row.get("last") is None, -(row.get("last") or 0)))
+    return kept[:6]
+
+
+def _notable_inode_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    kept = []
+    for row in rows:
+        mount = str(row.get("mount") or "")
+        if _is_noise_mount(mount):
+            continue
+        kept.append(row)
+    return kept[:6]
+
+
+def _disk_status(disk: dict[str, Any]) -> tuple[str, str]:
+    level = _pct_level(disk.get("last"), warn=80, danger=90)
+    if disk.get("days_to_full") is not None and disk["days_to_full"] <= 14:
+        level = "danger" if disk["days_to_full"] <= 7 else "warn"
+    labels = {"ok": "여유", "warn": "주의", "danger": "위험"}
+    return level, labels.get(level, "-")
+
+
+def _instance_status(row: dict[str, Any]) -> tuple[str, str]:
+    if row.get("fail_days"):
+        return "danger", "중단"
+    if row.get("missing_days"):
+        return "warn", "자료 없음"
+    return "ok", "정상"
+
+
+def _overall_status(
+    cpu: dict[str, Any],
+    mem: dict[str, Any],
+    disks: list[dict[str, Any]],
+    fail: dict[str, Any],
+    extras: list[dict[str, Any]],
+) -> tuple[str, str]:
+    levels = [
+        _pct_level(cpu.get("last")),
+        _pct_level(mem.get("last"), warn=80, danger=90),
+    ]
+    if fail:
+        levels.append("danger")
+    for disk in disks:
+        levels.append(_disk_status(disk)[0])
+    for extra in extras:
+        for row in (extra.get("stats") or {}).values():
+            if row.get("level") in {"warn", "danger"}:
+                levels.append(row["level"])
+        if extra.get("key") == "os_ntp_sync":
+            latest = extra.get("latest") or {}
+            if isinstance(latest, dict) and latest.get("ntp_synchronized") is False:
+                levels.append("danger")
+        if extra.get("key") == "mem_oom":
+            latest = extra.get("latest") or {}
+            if isinstance(latest, dict) and _as_num(latest.get("hits")):
+                levels.append("danger")
+    if "danger" in levels:
+        return "danger", "손볼 곳이 있습니다"
+    if "warn" in levels:
+        return "warn", "대체로 괜찮지만 지켜볼 곳이 있습니다"
+    return "ok", "지금은 여유 있습니다"
 
 
 def _disk_line(disk: dict[str, Any]) -> str:
@@ -887,8 +1277,6 @@ def _instance_line(row: dict[str, Any]) -> str:
         parts.append(f"중단 {row.get('fail_days')}일")
     if row.get("missing_days"):
         parts.append(f"자료 없음 {row.get('missing_days')}일")
-    if not row.get("registered"):
-        parts.append("등록 안 된 인스턴스")
     return ", ".join(parts)
 
 
@@ -906,35 +1294,47 @@ def render_resource_report(
     mem = analysis.get("mem") or {}
     fail = analysis.get("instance_fail") or {}
     missing = analysis.get("instance_missing") or {}
-    disks = analysis.get("disks") or []
+    disks = _notable_disks(analysis.get("disks") or [])
     busy = analysis.get("busy_hours") or []
     top = analysis.get("top_processes") or []
-    detail = analysis.get("instances_detail") or []
-    registered = analysis.get("instances") or []
+    detail = [
+        row
+        for row in (analysis.get("instances_detail") or [])
+        if row.get("name") and "{{" not in str(row.get("name"))
+    ]
+    detail.sort(
+        key=lambda row: (
+            0 if _instance_status(row)[0] == "danger" else 1 if _instance_status(row)[0] == "warn" else 2,
+            str(row.get("name") or ""),
+        )
+    )
+    registered = [name for name in (analysis.get("instances") or []) if name and "{{" not in name]
+    extras = analysis.get("extras") or []
     review = ai or {}
     ai_summary = str(review.get("summary") or "").strip()
     ai_risks = review.get("risks") or []
     ai_actions = review.get("actions") or []
+    overall, verdict = _overall_status(cpu, mem, disks, fail, extras)
 
     soonest = [disk for disk in disks if disk.get("days_to_full") is not None]
     soonest.sort(key=lambda disk: disk["days_to_full"])
     summary_bits = [
+        verdict,
         f"자료 {analysis.get('count') or 0}일",
-        f"CPU {_fmt_pct(cpu.get('last'))} ({cpu.get('direction') or '-'})",
-        f"MEM {_fmt_pct(mem.get('last'))} ({mem.get('direction') or '-'})",
+        f"CPU {_fmt_pct(cpu.get('last'))}",
+        f"MEM {_fmt_pct(mem.get('last'))}",
     ]
     if soonest:
         first = soonest[0]
-        summary_bits.append(f"{first['mount']} 약 {first['days_to_full']}일 뒤 만적")
+        summary_bits.append(f"{_disk_alias(str(first['mount']))} 약 {first['days_to_full']}일 뒤 가득 참")
     if fail:
-        summary_bits.append(f"인스턴스 이상 {len(fail)}종")
-    if missing:
-        summary_bits.append(f"자료 빠진 인스턴스 {len(missing)}종")
-    summary = ", ".join(summary_bits)
+        summary_bits.append(f"중단 {len(fail)}개")
+    summary = " · ".join(summary_bits)
 
     md = [
         f"# {title}",
         "",
+        f"- 한줄: {verdict}",
         f"- 기간: {start} ~ {end}",
         f"- 대상: {server}",
         f"- 요약: {summary}",
@@ -964,6 +1364,10 @@ def render_resource_report(
         md.append(f"- 하루 중 최고 CPU {_fmt_pct(cpu.get('peak_max'))}, MEM {_fmt_pct(mem.get('peak_max'))}")
     if mem.get("swap_max") is not None:
         md.append(f"- 스왑 최대 {_fmt_pct(mem.get('swap_max'))}")
+    if cpu.get("load1_last") is not None:
+        md.append(f"- Load1 최근 {cpu.get('load1_last')} (평균 {cpu.get('load1_avg')})")
+    if cpu.get("cores") is not None:
+        md.append(f"- 코어 {cpu.get('cores')}")
     if busy:
         md.append(
             "- 바쁜 시간대: "
@@ -974,14 +1378,16 @@ def render_resource_report(
     md += ["", "## Disk", ""]
     if disks:
         for disk in disks:
-            md.append(f"- `{disk['mount']}` {_disk_line(disk)}")
+            _level, label = _disk_status(disk)
+            md.append(f"- {_disk_alias(str(disk['mount']))} ({disk['mount']}) {label} · {_disk_line(disk)}")
     else:
         md.append("- 디스크 자료 없음")
     md += ["", "## 인스턴스", ""]
     if registered:
         md.append(f"- 등록한 인스턴스: {', '.join(registered)}")
     for row in detail:
-        md.append(f"- **{row['name']}** {_instance_line(row)}")
+        _level, label = _instance_status(row)
+        md.append(f"- **{row['name']}** {label} · {_instance_line(row)}")
     for name, days_failed in sorted(fail.items()):
         md.append(f"- **{name}** 중단 날짜: {', '.join(days_failed)}")
     for name, days_missing in sorted(missing.items()):
@@ -992,6 +1398,22 @@ def render_resource_report(
         md += ["", "## CPU 상위 프로세스", ""]
         for row in top:
             md.append(f"- `{row['name']}` 평균 {_fmt_pct(row.get('cpu_avg'))}")
+    for extra in extras:
+        md += ["", f"## {extra['title']}", ""]
+        md.append(f"- 자료 {extra.get('days')}일")
+        if extra.get("stats"):
+            md.append(f"- {_stat_line(extra['stats'])}")
+        for field, val in _latest_pairs(extra.get("latest")):
+            if field in (extra.get("stats") or {}):
+                continue
+            md.append(f"- {_field_label(field)}: {_fmt_field(val)}")
+        rows = _latest_rows(extra.get("latest"))
+        if extra["key"] == "disk_inode" or (rows and "mount" in rows[0]):
+            rows = _notable_inode_rows(rows)
+        for row in rows[:8]:
+            bits = [f"{_field_label(k)} {_fmt_field(v)}" for k, v in row.items() if v not in (None, "")]
+            if bits:
+                md.append(f"- {', '.join(bits)}")
     markdown = "\n".join(md)
 
     ai_html = ""
@@ -1011,52 +1433,152 @@ def render_resource_report(
             )
         ai_html = "<h2>AI 총평</h2>" + "".join(blocks)
 
-    cpu_rows = [
-        f"<li>CPU 평균 {_fmt_pct(cpu.get('avg'))}, 최대 {_fmt_pct(cpu.get('max'))}, 최근 {_fmt_pct(cpu.get('last'))}, 방향 {escape(str(cpu.get('direction')))}</li>",
-        f"<li>MEM 평균 {_fmt_pct(mem.get('avg'))}, 최대 {_fmt_pct(mem.get('max'))}, 최근 {_fmt_pct(mem.get('last'))}, 방향 {escape(str(mem.get('direction')))}</li>",
-    ]
-    if cpu.get("peak_max") is not None:
-        cpu_rows.append(
-            f"<li>하루 중 최고 CPU {_fmt_pct(cpu.get('peak_max'))}, MEM {_fmt_pct(mem.get('peak_max'))}</li>"
-        )
-    if mem.get("swap_max") is not None:
-        cpu_rows.append(f"<li>스왑 최대 {_fmt_pct(mem.get('swap_max'))}</li>")
-    if busy:
-        cpu_rows.append(
-            "<li>바쁜 시간대: "
-            + escape(", ".join(f"{row['hour']}시 CPU {_fmt_pct(row.get('cpu_avg'))}" for row in busy))
-            + "</li>"
-        )
-    cpu_html = "".join(cpu_rows)
+    def _tag(level: str, text: str) -> str:
+        if not level:
+            return escape(text)
+        return f'<span class="tag {level}">{escape(text)}</span>'
 
-    disk_html = "".join(
-        f"<li><code>{escape(str(disk['mount']))}</code> {escape(_disk_line(disk))}</li>"
-        for disk in disks
-    ) or "<li>디스크 자료 없음</li>"
+    def _kpi(label: str, value: str, note: str = "", level: str = "") -> str:
+        return (
+            f'<div class="kpi {level}"><div class="label">{escape(label)}</div>'
+            f'<div class="value">{value}</div>'
+            f'{f"<div class=note>{escape(note)}</div>" if note else ""}</div>'
+        )
 
-    inst_rows = [f"<li>등록한 인스턴스: {escape(', '.join(registered))}</li>"] if registered else []
-    inst_rows += [
-        f"<li><strong>{escape(row['name'])}</strong> {escape(_instance_line(row))}</li>"
-        for row in detail
+    cpu_level = _pct_level(cpu.get("last"))
+    mem_level = _pct_level(mem.get("last"), warn=80, danger=90)
+    worst_disk = disks[0] if disks else None
+    disk_level, disk_label = _disk_status(worst_disk) if worst_disk else ("", "-")
+    live = sum(1 for row in detail if _instance_status(row)[0] == "ok")
+    inst_level = "danger" if fail else ("warn" if missing else "ok")
+
+    cpu_note = f"평균 {_fmt_pct(cpu.get('avg'))}"
+    if cpu.get("cores") is not None:
+        cpu_note += f" · {int(cpu['cores'])}코어"
+    mem_note = f"평균 {_fmt_pct(mem.get('avg'))}"
+    if (mem.get("swap_max") or 0) >= 5:
+        mem_note += f" · 스왑 최대 {_fmt_pct(mem.get('swap_max'))}"
+    kpis = [
+        _kpi("CPU 사용률", _fmt_pct(cpu.get("last")), cpu_note, cpu_level),
+        _kpi("메모리", _fmt_pct(mem.get("last")), mem_note, mem_level),
     ]
-    inst_rows += [
-        f"<li><strong>{escape(name)}</strong> 중단 날짜: {escape(', '.join(days_failed))}</li>"
-        for name, days_failed in sorted(fail.items())
-    ]
-    inst_rows += [
-        f"<li><strong>{escape(name)}</strong> 자료 없는 날짜: {escape(', '.join(days_missing))}</li>"
-        for name, days_missing in sorted(missing.items())
-    ]
-    if not inst_rows:
-        inst_rows.append("<li>기간 내 인스턴스 이상은 없습니다.</li>")
-    inst_html = "".join(inst_rows)
+    if worst_disk:
+        kpis.append(
+            _kpi(
+                _disk_alias(str(worst_disk.get("mount") or "디스크")),
+                _fmt_pct(worst_disk.get("last")),
+                disk_label,
+                disk_level,
+            )
+        )
+    if detail or fail:
+        kpis.append(_kpi("서비스", f"{live}/{len(detail) or len(fail)}", "정상/전체", inst_level))
+
+    disk_rows = []
+    for disk in disks:
+        level, label = _disk_status(disk)
+        left = _fmt_gb(disk.get("free_gb"))
+        days_left = f" · {disk['days_to_full']}일 뒤 가득 참" if disk.get("days_to_full") is not None else ""
+        disk_rows.append(
+            "<tr>"
+            f"<td><div class='name'>{escape(_disk_alias(str(disk['mount'])))}</div>"
+            f"<div class='sub'>{escape(str(disk['mount']))}</div></td>"
+            f"<td>{_tag(level, _fmt_pct(disk.get('last')))}</td>"
+            f"<td>{escape(left)}{escape(days_left)}</td>"
+            f"<td>{_tag(level, label)}</td>"
+            "</tr>"
+        )
+    disk_html = (
+        "<table><thead><tr><th>위치</th><th>사용</th><th>남은 공간</th><th>상태</th></tr></thead><tbody>"
+        + "".join(disk_rows)
+        + "</tbody></table>"
+        if disk_rows
+        else "<p class='empty'>디스크 자료가 없습니다.</p>"
+    )
+
+    inst_rows = []
+    for row in detail:
+        level, label = _instance_status(row)
+        note = []
+        if row.get("fail_days"):
+            note.append(f"중단 {row['fail_days']}일")
+        if row.get("cpu_avg") is not None:
+            note.append(f"CPU {_fmt_pct(row.get('cpu_avg'))}")
+        inst_rows.append(
+            "<tr>"
+            f"<td class='name'>{escape(row['name'])}</td>"
+            f"<td>{_tag(level, label)}</td>"
+            f"<td>{escape(' · '.join(note) or '-')}</td>"
+            "</tr>"
+        )
+    inst_html = ""
+    if inst_rows:
+        inst_html = (
+            "<h2>서비스</h2><table><thead><tr><th>이름</th><th>상태</th><th>메모</th></tr></thead><tbody>"
+            + "".join(inst_rows)
+            + "</tbody></table>"
+        )
 
     top_html = ""
     if top:
-        top_html = "<h2>CPU 상위 프로세스</h2><ul>" + "".join(
-            f"<li><code>{escape(str(row['name']))}</code> 평균 {_fmt_pct(row.get('cpu_avg'))}</li>"
-            for row in top
-        ) + "</ul>"
+        top_html = (
+            "<h2>지금 바쁜 프로세스</h2><table><thead><tr><th>프로세스</th><th>CPU</th></tr></thead><tbody>"
+            + "".join(
+                f"<tr><td>{escape(str(row['name']))}</td><td>{_fmt_pct(row.get('cpu_avg'))}</td></tr>"
+                for row in top[:5]
+            )
+            + "</tbody></table>"
+        )
+
+    extra_rows = []
+    extra_blocks = []
+    for extra in extras:
+        latest_rows = _latest_rows(extra.get("latest"))
+        if extra["key"] == "disk_inode":
+            latest_rows = _notable_inode_rows(latest_rows)
+        stats = extra.get("stats") or {}
+        if extra["key"] in {"os_info", "os_uptime", "os_cloud_meta"}:
+            pairs = _latest_pairs(extra.get("latest"))
+            extra_rows.append(
+                "<tr>"
+                f"<td>{escape(extra['title'])}</td>"
+                f"<td colspan='2'>{escape(' · '.join(f'{_field_label(k)} {_fmt_field(v)}' for k, v in pairs) or '-')}</td>"
+                "</tr>"
+            )
+        elif stats and extra["key"] != "disk_inode":
+            first = next(iter(stats.values()))
+            extra_rows.append(
+                "<tr>"
+                f"<td>{escape(extra['title'])}</td>"
+                f"<td>{_tag(first.get('level') or '', _fmt_field(first.get('last')))}</td>"
+                f"<td>{escape(_stat_line(stats))}</td>"
+                "</tr>"
+            )
+        if extra["key"] == "disk_inode" and latest_rows:
+            extra_blocks.append(
+                "<h2>inode</h2><table><thead><tr><th>위치</th><th>사용</th></tr></thead><tbody>"
+                + "".join(
+                    f"<tr><td>{escape(_disk_alias(str(row.get('mount'))))}</td>"
+                    f"<td>{_tag(_field_level('disk_inode', 'inode_pct', row.get('inode_pct')), _fmt_pct(_as_num(row.get('inode_pct'))))}</td></tr>"
+                    for row in latest_rows
+                )
+                + "</tbody></table>"
+            )
+    extra_html = ""
+    if extra_rows:
+        extra_html = (
+            "<h2>더 본 항목</h2><table><thead><tr><th>항목</th><th>값</th><th>메모</th></tr></thead><tbody>"
+            + "".join(extra_rows)
+            + "</tbody></table>"
+        )
+    extra_html += "".join(extra_blocks)
+    busy_html = ""
+    if busy:
+        busy_html = (
+            "<p class='meta'>바쁜 시간 · "
+            + escape(", ".join(f"{row['hour']}시 CPU {_fmt_pct(row.get('cpu_avg'))}" for row in busy[:2]))
+            + "</p>"
+        )
 
     html = f"""<!DOCTYPE html>
 <html lang="ko">
@@ -1064,22 +1586,63 @@ def render_resource_report(
   <meta charset="utf-8">
   <title>{escape(title)}</title>
   <style>
-    body {{ font-family: Segoe UI, sans-serif; background: #12141a; color: #e8e4d9; margin: 32px; }}
-    h1,h2 {{ font-weight: 600; }}
-    code {{ font-family: Consolas, monospace; background: #1b1f28; padding: 2px 6px; }}
+    :root {{
+      --bg: #f6f7f9;
+      --card: #fff;
+      --line: #e6e8ee;
+      --text: #1d2433;
+      --muted: #667085;
+      --ok: #067647;
+      --ok-bg: #ecfdf3;
+      --warn: #b54708;
+      --warn-bg: #fffaeb;
+      --danger: #b42318;
+      --danger-bg: #fef3f2;
+    }}
+    body {{ font-family: "Segoe UI", "Apple SD Gothic Neo", sans-serif; background: var(--bg); color: var(--text); margin: 0; }}
+    .wrap {{ max-width: 880px; margin: 0 auto; padding: 32px 24px 48px; }}
+    h1 {{ font-size: 1.45rem; margin: 0 0 6px; }}
+    h2 {{ font-size: 0.95rem; margin: 28px 0 10px; color: #344054; }}
+    .meta {{ color: var(--muted); font-size: 13px; margin-bottom: 16px; }}
+    .verdict {{ display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); margin-bottom: 16px; font-weight: 650; }}
+    .verdict.ok {{ background: var(--ok-bg); border-color: #abefc6; color: var(--ok); }}
+    .verdict.warn {{ background: var(--warn-bg); border-color: #fedf89; color: var(--warn); }}
+    .verdict.danger {{ background: var(--danger-bg); border-color: #fecdca; color: var(--danger); }}
+    .kpis {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }}
+    .kpi {{ background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }}
+    .kpi.ok {{ border-color: #abefc6; }}
+    .kpi.warn {{ border-color: #fedf89; background: var(--warn-bg); }}
+    .kpi.danger {{ border-color: #fecdca; background: var(--danger-bg); }}
+    .kpi .label {{ color: var(--muted); font-size: 12px; margin-bottom: 4px; }}
+    .kpi .value {{ font-size: 1.7rem; font-weight: 700; letter-spacing: -0.03em; }}
+    .kpi .note {{ color: var(--muted); font-size: 12px; margin-top: 4px; }}
+    table {{ width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }}
+    th, td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); font-size: 13px; }}
+    th {{ color: var(--muted); font-weight: 600; background: #fafbff; }}
+    tr:last-child td {{ border-bottom: 0; }}
+    .name {{ font-weight: 650; }}
+    .sub {{ color: var(--muted); font-size: 11px; margin-top: 2px; }}
+    .tag {{ display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 650; }}
+    .tag.ok {{ background: var(--ok-bg); color: var(--ok); }}
+    .tag.warn {{ background: var(--warn-bg); color: var(--warn); }}
+    .tag.danger {{ background: var(--danger-bg); color: var(--danger); }}
+    .empty {{ color: var(--muted); }}
   </style>
 </head>
 <body>
-  <h1>{escape(title)}</h1>
-  <p>기간: {escape(start)} ~ {escape(end)}<br>요약: {escape(summary)}</p>
-  {ai_html}
-  <h2>CPU / MEM</h2>
-  <ul>{cpu_html}</ul>
-  <h2>Disk</h2>
-  <ul>{disk_html}</ul>
-  <h2>인스턴스</h2>
-  <ul>{inst_html}</ul>
-  {top_html}
+  <div class="wrap">
+    <h1>{escape(server)} 상태</h1>
+    <div class="meta">{escape(start)} ~ {escape(end)} · 자료 {analysis.get('count') or 0}일</div>
+    <div class="verdict {overall}">{escape(verdict)}</div>
+    <div class="kpis">{''.join(kpis)}</div>
+    {busy_html}
+    {ai_html}
+    <h2>디스크</h2>
+    {disk_html}
+    {inst_html}
+    {top_html}
+    {extra_html}
+  </div>
 </body>
 </html>
 """

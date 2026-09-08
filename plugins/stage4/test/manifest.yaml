@@ -1,9 +1,9 @@
-name: resource_basic
+name: test
 stage: 4
 version: '1.0'
 type: resource_script
 enabled: true
-description: CPU·메모리·디스크·인스턴스 상태를 한 번에 찍어 오는 기본 수집 스크립트
+description: test 수집기
 targets:
 - '*'
 config:
@@ -11,11 +11,20 @@ config:
   - cpu_usage
   - cpu_load
   - cpu_core_count
-  - cpu_ctxswitch
   - mem_usage
   - mem_available
   - mem_swap
   - disk_usage
+  - disk_inode
+  - disk_dir_size
+  - net_traffic
+  - net_connections
   - proc_top_cpu
+  - proc_zombie
   - proc_service_alive
-  instances: []
+  - os_info
+  - sec_crontab_check
+  instances:
+  - test
+  - check
+  - choyoungsang

@@ -1,39 +1,65 @@
 {% extends "base.html" %}
-{% set title = "플러그인" %}
-{% set heading = "플러그인" %}
+{% set title = "리소스 및 성능 쉘 스크립트" if kind == "resources" else "로그 분석 플러그인" %}
+{% set heading = title %}
 {% block content %}
-<div class="alert alert-info" role="alert">
-  리소스 수집은 서버에 붙어 돌릴 셸 스크립트입니다. 서버 화면에서 골라 끼웁니다.
-  1단계는 모든 서버 공통입니다. 2단계는 서버별 로그 문구, 3단계는 보고서입니다.
-  서버 화면에서 해당 서버 전용 플러그인을 바로 등록할 수 있습니다.
-  웹에서는 YAML 규칙·대상 서버·켜짐 여부를 바꿉니다. Python 코드 자체는 파일로만 수정합니다.
-</div>
-<div class="mb-3">
-  <a class="btn btn-primary" href="/plugins/new?stage=4">리소스 수집 추가</a>
-  <a class="btn btn-outline-primary" href="/plugins/new?stage=2">2단계 규칙 추가</a>
-  <a class="btn btn-outline-primary" href="/plugins/new?stage=3">3단계 보고서 추가</a>
-</div>
-<div class="card mb-4" id="resource">
-  <div class="card-header">리소스 수집 · 서버에서 돌릴 스크립트</div>
+{% if kind == "resources" %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>수집 스크립트</span>
+    <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#plugin-add" aria-expanded="{{ 'true' if error else 'false' }}" aria-controls="plugin-add">
+      수집 스크립트 추가
+    </button>
+  </div>
+  <div class="collapse {% if error %}show{% endif %}" id="plugin-add">
+    <div class="card-body border-bottom">
+      <form method="post" action="/plugins/new" id="resource-plugin-form">
+        <input type="hidden" name="stage" value="4">
+        <input type="hidden" name="all_servers" value="1">
+        <div class="row gx-3">
+          <div class="col-md-4 mb-3">
+            <label class="small mb-1" for="name">이름 (영문/숫자/_-)</label>
+            <input class="form-control" id="name" name="name" required value="{{ form_name }}" placeholder="eai_resource">
+          </div>
+          <div class="col-md-8 mb-3">
+            <label class="small mb-1" for="description">설명</label>
+            <input class="form-control" id="description" name="description" value="{{ form_description }}" placeholder="EAI 서버 수집">
+          </div>
+        </div>
+        {% include "_resource_modules.html" %}
+        <div class="mt-3">
+          <button class="btn btn-primary" type="submit">만들기</button>
+          <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#plugin-add">닫기</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
-        <thead><tr><th>이름</th><th>대상</th><th>상태</th><th></th></tr></thead>
+        <thead><tr><th>이름</th><th></th></tr></thead>
         <tbody>
         {% for item in stage4 %}
           <tr>
             <td>{{ item.name }}<div class="text-muted small">{{ item.description }}</div></td>
-            <td><code>{{ item.targets | join(", ") }}</code></td>
-            <td>{% if item.enabled %}<span class="badge bg-success-soft text-success">ON</span>{% else %}<span class="badge bg-light text-muted">OFF</span>{% endif %}</td>
-            <td><a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a></td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a></td>
           </tr>
         {% else %}
-          <tr><td colspan="4" class="text-muted p-4">아직 리소스 수집 플러그인이 없습니다.</td></tr>
+          <tr><td colspan="2" class="text-muted p-4">아직 리소스 및 성능 쉘 스크립트가 없습니다.</td></tr>
         {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
+</div>
+{% else %}
+<div class="alert alert-info" role="alert">
+  2단계는 서버별 로그 문구, 3단계는 로그 분석 보고서입니다.
+  웹에서는 YAML 규칙·대상 서버·켜짐 여부를 바꿉니다. Python 코드 자체는 파일로만 수정합니다.
+</div>
+<div class="mb-3">
+  <a class="btn btn-primary" href="/plugins/new?stage=2">2단계 규칙 추가</a>
+  <a class="btn btn-outline-primary" href="/plugins/new?stage=3">3단계 보고서 추가</a>
 </div>
 <div class="card mb-4">
   <div class="card-header">Stage 2 · 서버별 분석</div>
@@ -50,6 +76,8 @@
             <td>{% if item.enabled %}<span class="badge bg-success-soft text-success">ON</span>{% else %}<span class="badge bg-light text-muted">OFF</span>{% endif %}</td>
             <td><a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a></td>
           </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-muted p-4">아직 로그 분석 규칙 플러그인이 없습니다.</td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -71,10 +99,18 @@
             <td>{% if item.enabled %}<span class="badge bg-success-soft text-success">ON</span>{% else %}<span class="badge bg-light text-muted">OFF</span>{% endif %}</td>
             <td><a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a></td>
           </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-muted p-4">아직 로그 분석 보고서 플러그인이 없습니다.</td></tr>
         {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
 </div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if kind == "resources" %}
+<script src="/static/js/guardian-plugin-modules.js"></script>
+{% endif %}
 {% endblock %}

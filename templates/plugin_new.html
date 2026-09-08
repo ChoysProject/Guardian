@@ -7,7 +7,7 @@
   <input type="hidden" name="stage" value="{{ stage }}">
   {% if bind_server %}<input type="hidden" name="bind_server" value="{{ bind_server }}">{% endif %}
   <div class="card mb-4">
-    <div class="card-header">{% if stage == 4 %}리소스 수집{% elif stage == 3 %}3단계 보고서{% else %}2단계 규칙{% endif %}{% if bind_server %} · {{ bind_server }}{% endif %}</div>
+    <div class="card-header">{% if stage == 4 %}리소스 및 성능 수집{% elif stage == 3 %}로그 분석 보고서{% else %}로그 분석 규칙{% endif %}{% if bind_server %} · {{ bind_server }}{% endif %}</div>
     <div class="card-body">
       <div class="mb-3">
         <label class="small mb-1" for="name">이름 (영문/숫자/_-)</label>
@@ -91,6 +91,6 @@
   </div>
   {% endif %}
   <button class="btn btn-primary" type="submit">만들기</button>
-  <a class="btn btn-outline-secondary" href="{% if bind_server %}/servers/logs{% else %}/plugins{% endif %}">취소</a>
+  <a class="btn btn-outline-secondary" href="{% if bind_server and stage != 4 %}/servers/logs{% elif stage == 4 %}/plugins/resources{% else %}/plugins/logs{% endif %}">취소</a>
 </form>
 {% endblock %}

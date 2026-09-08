@@ -7,9 +7,9 @@
 set +e
 SERVER_NAME="{{server}}"
 INSTANCES="{{instances}}"
-SEARCH_NAMES=""
+SEARCH_NAMES="test check choyoungsang"
 DATE="{{date}}"
-PLUGIN_NAME="resource_basic"
+PLUGIN_NAME="test"
 OUT_DIR="__GUARDIAN_COLLECT_PATH__"
 [ -z "$DATE" ] || [ "$DATE" = "{{date}}" ] && DATE="$(date +%F)"
 if [ -z "$OUT_DIR" ] || [ "$OUT_DIR" = "__GUARDIAN_COLLECT_PATH__" ]; then
@@ -101,16 +101,6 @@ check_cpu_core_count() {
   add_result cpu_core_count "$(printf '{"cores": %s}' "$(json_num "$n")")"
 }
 
-check_cpu_ctxswitch() {
-  if have_cmd vmstat; then
-    add_result cpu_ctxswitch "$(run_timeout 8 vmstat 1 2 | awk 'END {printf "{\"cs\": %s, \"in\": %s}", $(NF-1), $(NF-2)}')"
-  elif [ -r /proc/stat ]; then
-    add_result cpu_ctxswitch "$(awk '/^ctxt/{c=$2} /^intr/{i=$2} END {printf "{\"cs\": %s, \"in\": %s}", c+0, i+0}' /proc/stat)"
-  else
-    add_result cpu_ctxswitch '{"status":"unavailable"}'
-  fi
-}
-
 check_mem_usage() {
   if have_cmd free; then
     add_result mem_usage "$(free -m | awk '/^Mem:/ {pct=($2>0)?($3*100/$2):0; printf "{\"used_pct\": %.1f, \"used_mb\": %s, \"total_mb\": %s}", pct, $3, $2}')"
@@ -149,11 +139,57 @@ check_disk_usage() {
   fi
 }
 
+check_disk_inode() {
+  local rows=""
+  if have_cmd df; then
+    rows=$(df -Pi 2>/dev/null || df -i 2>/dev/null)
+    add_result disk_inode "[$(printf '%s' "$rows" | awk 'NR>1 && $6 ~ /^\// {gsub(/%/,"",$5); if(n++) printf ", "; printf "{\"mount\": \"%s\", \"inode_pct\": %s}", $6, $5}')]"
+  else
+    add_result disk_inode '{"status":"unavailable"}'
+  fi
+}
+
+check_disk_dir_size() {
+  if have_cmd du && [ -d "$WATCH_DIR" ]; then
+    add_result disk_dir_size "$(run_timeout 20 du -sb "$WATCH_DIR" | awk -v p="$WATCH_DIR" '{printf "{\"path\": \"%s\", \"bytes\": %s}", p, $1}')"
+  else
+    add_result disk_dir_size '{"status":"unavailable"}'
+  fi
+}
+
+check_net_traffic() {
+  if have_cmd ip; then
+    add_result net_traffic "[$(ip -s link 2>/dev/null | awk '/^[0-9]+:/{gsub(/:/,"",$2); name=$2} /RX:/{getline; rx=$1} /TX:/{getline; tx=$1; if(name!="" && name!="lo") {if(n++) printf ", "; printf "{\"iface\": \"%s\", \"rx_bytes\": %s, \"tx_bytes\": %s}", name, rx, tx}}')]"
+  elif [ -r /proc/net/dev ]; then
+    add_result net_traffic "[$(awk -F'[: ]+' 'NR>2 && $1!="lo" {if(n++) printf ", "; printf "{\"iface\": \"%s\", \"rx_bytes\": %s, \"tx_bytes\": %s}", $1, $2, $10}' /proc/net/dev)]"
+  else
+    add_result net_traffic '{"status":"unavailable"}'
+  fi
+}
+
+check_net_connections() {
+  if have_cmd ss; then
+    add_result net_connections "$(ss -s 2>/dev/null | awk '/estab/{e=$2} /TCP:/{tw=$6} END {printf "{\"established\": %s}", e+0}')"
+  elif have_cmd netstat; then
+    add_result net_connections "$(netstat -ant 2>/dev/null | awk '/ESTABLISHED/{e++} END {printf "{\"established\": %s}", e+0}')"
+  else
+    add_result net_connections '{"status":"unavailable"}'
+  fi
+}
+
 check_proc_top_cpu() {
   if have_cmd ps; then
     add_result proc_top_cpu "[$(ps aux 2>/dev/null | awk 'NR>1 {print $3+0 "\t" $4 "\t" $11}' | sort -nr 2>/dev/null | awk -v n="$TOP_N" 'NR<=n {if(i++) printf ", "; gsub(/"/,"",$3); printf "{\"name\": \"%s\", \"cpu_pct\": %s, \"mem_pct\": %s}", $3, $1, $2}')]"
   else
     add_result proc_top_cpu '{"status":"unavailable"}'
+  fi
+}
+
+check_proc_zombie() {
+  if have_cmd ps; then
+    add_result proc_zombie "$(ps aux 2>/dev/null | awk '$8 ~ /Z/ {z++} END {printf "{\"count\": %s}", z+0}')"
+  else
+    add_result proc_zombie '{"status":"unavailable"}'
   fi
 }
 
@@ -177,17 +213,74 @@ check_proc_service_alive() {
   add_result proc_service_alive "[$body]"
 }
 
+check_os_info() {
+  local distro="" kernel=""
+  [ -r /etc/os-release ] && distro=$(awk -F= '/^PRETTY_NAME=/{gsub(/"/,"",$2); print $2}' /etc/os-release)
+  have_cmd uname && kernel=$(uname -r)
+  add_result os_info "$(printf '{"distro": "%s", "kernel": "%s"}' "$(json_escape "$distro")" "$(json_escape "$kernel")")"
+}
+
+check_sec_crontab_check() {
+  if have_cmd crontab; then
+    add_result sec_crontab_check "$(printf '{"lines": %s}' "$(json_num "$(crontab -l 2>/dev/null | awk 'NF && $1!~/^#/{n++} END {print n+0}')")")"
+  else
+    add_result sec_crontab_check '{"status":"unavailable"}'
+  fi
+}
+
+check_instance_search() {
+  local body="" first=1 name line pid cpu mem cmd ok pids detail
+  for name in $SEARCH_NAMES; do
+    [ -z "$name" ] && continue
+    ok=false
+    pid=""
+    cpu="0"
+    mem="0"
+    cmd=""
+    pids=0
+    detail=""
+    if have_cmd ps; then
+      line=$(ps aux 2>/dev/null | grep -F -- "$name" | grep -v grep | awk 'NR==1 {print}')
+      if [ -n "$line" ]; then
+        ok=true
+        pid=$(printf '%s' "$line" | awk '{print $2}')
+        cpu=$(printf '%s' "$line" | awk '{print $3}')
+        mem=$(printf '%s' "$line" | awk '{print $4}')
+        cmd=$(printf '%s' "$line" | awk '{for(i=11;i<=NF;i++) printf (i==11?$i:" "$i)}')
+      fi
+    elif have_cmd pgrep && pgrep -f "$name" >/dev/null 2>&1; then
+      ok=true
+      pid=$(pgrep -f "$name" | awk 'NR==1 {print}')
+    fi
+    if [ "$ok" = true ] && [ -n "$pid" ]; then
+      pids=1
+      detail="pid $pid"
+    fi
+    [ $first -eq 1 ] || body="$body, "
+    first=0
+    body="$body{\"name\": \"$(json_escape "$name")\", \"ok\": $ok, \"pid\": \"$(json_escape "$pid")\", \"pids\": $pids, \"cpu_pct\": $cpu, \"mem_pct\": $mem, \"detail\": \"$(json_escape "$detail")\", \"cmd\": \"$(json_escape "$cmd")\"}"
+  done
+  add_result instance_search "[$body]"
+}
+
 # 고른 모듈만 실행. 하나가 깨져도 나머지는 계속 돈다.
 run_check check_cpu_usage
 run_check check_cpu_load
 run_check check_cpu_core_count
-run_check check_cpu_ctxswitch
 run_check check_mem_usage
 run_check check_mem_available
 run_check check_mem_swap
 run_check check_disk_usage
+run_check check_disk_inode
+run_check check_disk_dir_size
+run_check check_net_traffic
+run_check check_net_connections
 run_check check_proc_top_cpu
+run_check check_proc_zombie
 run_check check_proc_service_alive
+run_check check_os_info
+run_check check_sec_crontab_check
+run_check check_instance_search
 
 # FOOTER: 모은 것만 JSON 으로 찍는다. 여기까지는 무조건 온다.
 cpu_json='{"usage_pct": null}'

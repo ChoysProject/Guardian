@@ -111,23 +111,24 @@ def create_resource_plugin(
     description: str = "",
     targets: list[str],
     script: str,
+    config: dict[str, Any] | None = None,
 ) -> Path:
     folder = plugin_folder(4, name)
     if (folder / "manifest.yaml").exists():
         raise FileExistsError(f"이미 있는 플러그인입니다: {name}")
     write_script(folder, script)
-    _dump(
-        folder / "manifest.yaml",
-        {
-            "name": name,
-            "stage": 4,
-            "version": "1.0",
-            "type": "resource_script",
-            "enabled": True,
-            "description": description or f"{name} 리소스 수집",
-            "targets": targets or ["*"],
-        },
-    )
+    payload = {
+        "name": name,
+        "stage": 4,
+        "version": "1.0",
+        "type": "resource_script",
+        "enabled": True,
+        "description": description or f"{name} 리소스 수집",
+        "targets": targets or ["*"],
+    }
+    if config:
+        payload["config"] = config
+    _dump(folder / "manifest.yaml", payload)
     return folder
 
 

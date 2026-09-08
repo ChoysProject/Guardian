@@ -50,11 +50,15 @@ def render_script(manifest: PluginManifest, server) -> str:
     if not script.strip():
         raise ValueError(f"{manifest.name} 플러그인에 수집 스크립트가 없습니다.")
     instances = " ".join(parse_list(getattr(server, "instances", "[]")))
+    collect_path = (getattr(server, "collect_path", "") or "").strip().replace("\\", "/").replace('"', "")
     replaced = (
         script.replace("{{server}}", server.name)
         .replace("{{instances}}", instances)
         .replace("{{date}}", today_stamp())
+        .replace("{{plugin}}", manifest.name)
     )
+    if collect_path:
+        replaced = replaced.replace('OUT_DIR="__GUARDIAN_COLLECT_PATH__"', f'OUT_DIR="{collect_path}"', 1)
     return replaced.replace("\r\n", "\n")
 
 
@@ -108,9 +112,9 @@ def run_remote(server, script: str) -> str:
             text=True,
             timeout=settings.collect.ssh_timeout_seconds * 3,
         )
-        if done.returncode != 0 and not done.stdout.strip():
-            raise ValueError(f"스크립트 실행 실패: {done.stderr.strip()[:300]}")
-        return done.stdout
+        if done.stdout.strip():
+            return done.stdout
+        raise ValueError(f"스크립트 실행 실패: {done.stderr.strip()[:300]}")
 
     client = _connect(server)
     try:
@@ -122,9 +126,9 @@ def run_remote(server, script: str) -> str:
         out = stdout.read().decode("utf-8", errors="replace")
         err = stderr.read().decode("utf-8", errors="replace")
         code = stdout.channel.recv_exit_status()
-        if not out.strip():
-            raise ValueError(f"결과가 비었습니다 (exit {code}). {err.strip()[:300]}")
-        return out
+        if out.strip():
+            return out
+        raise ValueError(f"결과가 비었습니다 (exit {code}). {err.strip()[:300]}")
     finally:
         client.close()
 
@@ -146,19 +150,46 @@ def collect_server(db, server, *, when: datetime | None = None) -> dict[str, Any
     try:
         script = render_script(manifest, server)
         raw = run_remote(server, script)
-        snapshots = parse_payload(
-            _extract_json(raw),
-            fallback_server=server.name,
-            fallback_date=today_stamp(when),
-        )
-        if not snapshots:
-            raise ValueError("받은 자료가 없습니다.")
-        snapshot = snapshots[0]
+        try:
+            snapshots = parse_payload(
+                _extract_json(raw),
+                fallback_server=server.name,
+                fallback_date=today_stamp(when),
+            )
+            if not snapshots:
+                raise ValueError("받은 자료가 없습니다.")
+            snapshot = snapshots[0]
+        except Exception as parse_exc:
+            snapshot = {
+                "server": server.name,
+                "date": today_stamp(when),
+                "cpu": {"usage_pct": None},
+                "mem": {"used_pct": None},
+                "disk": [],
+                "instances": [],
+                "top": [],
+                "extra": {"status": "partial", "error": str(parse_exc)[:300]},
+            }
         snapshot["server"] = server.name
         save_snapshot(snapshot)
     except Exception as exc:  # noqa: BLE001 — 사유를 화면에 남긴다
         logger.warning("리소스 수집 실패: %s (%s)", server.name, exc)
         server.last_resource_error = str(exc)[:500]
+        try:
+            save_snapshot(
+                {
+                    "server": server.name,
+                    "date": today_stamp(when),
+                    "cpu": {"usage_pct": None},
+                    "mem": {"used_pct": None},
+                    "disk": [],
+                    "instances": [],
+                    "top": [],
+                    "extra": {"status": "failed", "error": str(exc)[:300]},
+                }
+            )
+        except Exception:  # noqa: BLE001 — 스냅샷 저장까지 실패해도 사유는 남긴다
+            pass
         db.commit()
         raise
     server.last_resource_at = datetime.utcnow()

@@ -40,20 +40,25 @@ def _session():
 
 
 def _fetch(server_name: str):
+    from sqlalchemy.exc import OperationalError
+
     from app.models import Server
 
     name = (server_name or "").strip()
     if not name:
         return None
-    with _session() as db:
-        server = db.query(Server).filter(Server.name == name).one_or_none()
-        if not server:
-            return None
-        return {
-            "logs": bool(server.collect_logs),
-            "resources": bool(server.collect_resources),
-            "instances": parse_list(server.instances),
-        }
+    try:
+        with _session() as db:
+            server = db.query(Server).filter(Server.name == name).one_or_none()
+            if not server:
+                return None
+            return {
+                "logs": bool(server.collect_logs),
+                "resources": bool(server.collect_resources),
+                "instances": parse_list(server.instances),
+            }
+    except OperationalError:
+        return None
 
 
 def get_modes(server_name: str) -> dict:

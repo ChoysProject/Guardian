@@ -3,6 +3,7 @@
 {% set heading = server.name + " 수정" %}
 {% block content %}
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if notice %}<div class="alert alert-success">{{ notice }}</div>{% endif %}
 {% if tested %}
 <div class="alert alert-success">
   <div class="fw-semibold mb-1">접속 확인 결과</div>
@@ -39,17 +40,17 @@
         </div>
         <div class="col-md-3 mb-3">
           <label class="small mb-1" for="collector_type">수집기</label>
-          <select class="form-select" id="collector_type" name="collector_type">
-            <option value="ssh" {% if server.collector_type == "ssh" %}selected{% endif %}>ssh</option>
-            <option value="local" {% if server.collector_type == "local" %}selected{% endif %}>local</option>
+          <select class="form-select" id="collector_type" name="collector_type" data-picker>
+            <option value="ssh" data-desc="원격 서버에 붙어서 수집" {% if server.collector_type == "ssh" %}selected{% endif %}>ssh</option>
+            <option value="local" data-desc="Guardian이 도는 이 서버에서 수집" {% if server.collector_type == "local" %}selected{% endif %}>local</option>
           </select>
         </div>
         <div class="col-md-4 mb-3">
           <label class="small mb-1" for="auth_type">인증 방식</label>
-          <select class="form-select auth-type" id="auth_type" name="auth_type">
-            <option value="key" {% if server.auth_type == "key" %}selected{% endif %}>개인키 (id_rsa)</option>
-            <option value="password" {% if server.auth_type == "password" %}selected{% endif %}>비밀번호</option>
-            <option value="agent" {% if server.auth_type == "agent" %}selected{% endif %}>에이전트 / 기본 키</option>
+          <select class="form-select auth-type" id="auth_type" name="auth_type" data-picker>
+            <option value="key" data-desc="키 파일을 올리거나 서버 안 경로를 씁니다" {% if server.auth_type == "key" %}selected{% endif %}>개인키 (id_rsa)</option>
+            <option value="password" data-desc="암호화해서 보관합니다" {% if server.auth_type == "password" %}selected{% endif %}>비밀번호</option>
+            <option value="agent" data-desc="ssh-agent나 기본 키에 맡깁니다" {% if server.auth_type == "agent" %}selected{% endif %}>에이전트 / 기본 키</option>
           </select>
         </div>
         <div class="col-md-4 mb-3 auth-password {% if server.auth_type != 'password' %}d-none{% endif %}">
@@ -65,77 +66,79 @@
           <label class="small mb-1" for="key_path">또는 키 경로</label>
           <input class="form-control" id="key_path" name="key_path" value="{{ server.key_path }}">
         </div>
-        <div class="col-12 mb-3">
-          <label class="small mb-1" for="note">메모</label>
+        <div class="col-md-6 mb-3">
+          <label class="small mb-1" for="note">비고</label>
           <input class="form-control" id="note" name="note" value="{{ server.note }}">
         </div>
-        <div class="col-12 mb-3">
-          <div class="small mb-1">하는 일</div>
-          <div class="form-check form-check-inline">
-            <input class="form-check-input" type="checkbox" name="collect_resources" id="collect_resources" value="1" {% if server.collect_resources %}checked{% endif %}>
-            <label class="form-check-label" for="collect_resources">리소스 수집</label>
-          </div>
-          <div class="form-check form-check-inline">
-            <input class="form-check-input" type="checkbox" name="collect_logs" id="collect_logs" value="1" {% if server.collect_logs %}checked{% endif %}>
-            <label class="form-check-label" for="collect_logs">로그 수집</label>
+        <div class="col-md-6 mb-3">
+          <label class="small mb-1" for="collect_path">수집 경로</label>
+          <input class="form-control" id="collect_path" name="collect_path" value="{{ server.collect_path }}" placeholder="/mnt/c/Users/이름/Desktop/Test_guardian/스크립트이름">
+          <div class="form-text">
+            스크립트 폴더 또는 <code>DailyData</code> 의 리눅스/WSL 경로입니다. 비우면 스크립트 옆 <code>DailyData/</code> 에 쌓입니다.
+            저장한 뒤 "다시 가져오기"를 누르면 이 경로와 DailyData 안의 JSON을 전부 읽어 옵니다.
           </div>
         </div>
         <div class="col-12 mb-3">
-          <label class="small mb-1">인스턴스</label>
-          <div id="instance-list" class="row gx-2">
-            {% for inst in instances %}
-            <div class="col-md-4 mb-2 instance-item">
-              <div class="input-group input-group-sm">
-                <input class="form-control" name="instances" value="{{ inst }}">
-                <button class="btn btn-outline-secondary instance-remove" type="button" aria-label="빼기">−</button>
-              </div>
-            </div>
-            {% else %}
-            <div class="col-md-4 mb-2 instance-item">
-              <div class="input-group input-group-sm">
-                <input class="form-control" name="instances" placeholder="was">
-                <button class="btn btn-outline-secondary instance-remove" type="button" aria-label="빼기">−</button>
-              </div>
-            </div>
+          <label class="small mb-1" for="plugins">수집 스크립트</label>
+          <select class="form-select" id="plugins" name="plugins" data-picker data-picker-empty="스크립트를 고르세요">
+            <option value="" data-desc="기본 수집 스크립트로 돕니다" {% if not chosen %}selected{% endif %}>기본 스크립트로</option>
+            {% for item in resource_plugins %}
+            <option value="{{ item.name }}" data-desc="{{ item.description }}" {% if item.name in chosen %}selected{% endif %}>{{ item.name }}</option>
             {% endfor %}
-          </div>
-          <button class="btn btn-sm btn-outline-secondary" type="button" id="instance-add">인스턴스 추가</button>
-        </div>
-        <div class="col-12 mb-3">
-          <label class="small mb-1">수집 플러그인</label>
-          <div class="form-text mb-2">
+          </select>
+          <div class="form-text">
             지금 실제로 도는 것: <span class="fw-semibold">{{ effective_plugin or "없음" }}</span>
+            {% if effective_plugin %}<a class="ms-2" href="/plugins/4/{{ effective_plugin }}">스크립트에서 고치기</a>{% endif %}
           </div>
-          {% for item in resource_plugins %}
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="plugins" value="{{ item.name }}" id="ep-{{ loop.index }}" {% if item.name in chosen %}checked{% endif %}>
-            <label class="form-check-label" for="ep-{{ loop.index }}">
-              {{ item.name }} <span class="text-muted small">{{ item.description }}</span>
-              <a class="small ms-2" href="/plugins/4/{{ item.name }}">고치기</a>
-            </label>
-          </div>
-          {% else %}
-          <div class="small text-muted">아직 리소스 수집 플러그인이 없습니다. <a href="/plugins/new?stage=4">지금 만들기</a></div>
-          {% endfor %}
         </div>
       </div>
-      <button class="btn btn-primary" type="submit">저장</button>
-      <a class="btn btn-outline-secondary" href="/servers/resources">목록</a>
+      <div class="d-flex justify-content-end gap-2">
+        <button class="btn btn-primary" type="submit">저장</button>
+        <a class="btn btn-outline-secondary" href="/servers/resources">목록</a>
+      </div>
     </form>
   </div>
 </div>
 
 <div class="card mb-4">
-  <div class="card-header">최근 수집</div>
-  <div class="card-body">
-    <dl class="row small mb-0">
-      <dt class="col-sm-3">마지막 수집</dt><dd class="col-sm-9">{{ server.last_resource_at | ts }}</dd>
-      <dt class="col-sm-3">마지막 오류</dt>
-      <dd class="col-sm-9 {% if server.last_resource_error %}text-danger{% else %}text-muted{% endif %}">
-        {{ server.last_resource_error or "없음" }}
-      </dd>
-    </dl>
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>최근 수집 · 마지막 {{ server.last_resource_at | ts }}</span>
+    <form method="post" action="/servers/resources/{{ server.id }}/reload-path" class="mb-0">
+      <button class="btn btn-sm btn-outline-primary" type="submit" {% if not server.collect_path %}disabled{% endif %}>수집 경로에서 다시 가져오기</button>
+    </form>
   </div>
+  {% if server.last_resource_error %}
+  <div class="card-body border-bottom py-2">
+    <div class="d-flex align-items-start justify-content-between small text-danger">
+      <span>마지막 수집 오류: {{ server.last_resource_error }}</span>
+      <form method="post" action="/servers/resources/{{ server.id }}/clear-error" class="mb-0 ms-3">
+        <button class="btn btn-sm btn-outline-danger" type="submit">오류 지우기</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+  <ul class="list-group list-group-flush">
+    {% for item in recent %}
+    <li class="list-group-item d-flex align-items-center justify-content-between small">
+      <div>
+        <span class="fw-semibold">{{ item.date }}</span>
+        <span class="text-muted ms-2">CPU {{ item.cpu.usage_pct if item.cpu else "-" }}%</span>
+        <span class="text-muted ms-2">MEM {{ item.mem.used_pct if item.mem else "-" }}%</span>
+        {% set fails = (item.instances or []) | rejectattr("ok") | list %}
+        {% if fails %}
+        <span class="badge bg-danger-soft text-danger ms-2">장애 {{ fails | length }}개</span>
+        {% endif %}
+      </div>
+      <form method="post" action="/servers/resources/delete" class="mb-0" onsubmit="return confirm('{{ item.date }} 자료를 지울까요?');">
+        <input type="hidden" name="server" value="{{ server.name }}">
+        <input type="hidden" name="date" value="{{ item.date }}">
+        <button class="btn btn-sm btn-outline-secondary" type="submit">삭제</button>
+      </form>
+    </li>
+    {% else %}
+    <li class="list-group-item small text-muted">아직 쌓인 자료가 없습니다.</li>
+    {% endfor %}
+  </ul>
 </div>
 
 <div class="card mb-4 border-danger-subtle">
