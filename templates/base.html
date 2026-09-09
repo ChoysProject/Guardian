@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <title>{{ app_name }} · {{ title | default("로그 감시") }}</title>
   <link href="/static/vendor/sb-admin-pro/css/styles.css" rel="stylesheet">
-  <link href="/static/css/guardian.css?v=module-help-2" rel="stylesheet">
+  <link href="/static/css/guardian.css?v=ui-toast-copy-1" rel="stylesheet">
   <link rel="icon" type="image/png" href="/static/vendor/sb-admin-pro/assets/img/favicon.png">
   <script src="/static/vendor/feather.min.js"></script>
 </head>
@@ -43,7 +43,7 @@
             <div class="collapse {% if servers_open %}show{% endif %}" id="collapseServers" data-bs-parent="#accordionSidenav">
               <nav class="sidenav-menu-nested nav">
                 <a class="nav-link {% if request.url.path.startswith('/servers/resources') %}active{% endif %}" href="/servers/resources">리소스 및 성능 수집 대상 서버</a>
-                <a class="nav-link {% if request.url.path.startswith('/servers/logs') %}active{% endif %}" href="/servers/logs">로그 수집 대상 서버</a>
+                <a class="nav-link js-soon {% if request.url.path.startswith('/servers/logs') %}active{% endif %}" href="#" data-toast="준비중입니다.">로그 수집 대상 서버 (추후 고도화)</a>
               </nav>
             </div>
             <a class="nav-link {% if request.url.path.startswith('/findings') %}active{% endif %}" href="/findings">
@@ -59,7 +59,7 @@
             <div class="collapse {% if reports_open %}show{% endif %}" id="collapseReports" data-bs-parent="#accordionSidenav">
               <nav class="sidenav-menu-nested nav">
                 <a class="nav-link {% if request.url.path.startswith('/reports/resources') %}active{% endif %}" href="/reports/resources">리소스 및 성능 보고서</a>
-                <a class="nav-link {% if request.url.path == '/reports' %}active{% endif %}" href="/reports">로그 분석 보고서</a>
+                <a class="nav-link js-soon {% if request.url.path == '/reports' %}active{% endif %}" href="#" data-toast="준비중입니다.">로그 분석 보고서 (추후 고도화)</a>
               </nav>
             </div>
             {% set plugins_open = request.url.path.startswith('/plugins') %}
@@ -73,8 +73,8 @@
             <div class="collapse {% if plugins_open %}show{% endif %}" id="collapsePlugins" data-bs-parent="#accordionSidenav">
               <nav class="sidenav-menu-nested nav">
                 <a class="nav-link {% if plugins_script %}active{% endif %}" href="/plugins/resources">리소스 및 성능 쉘 스크립트</a>
-                <a class="nav-link {% if plugins_resource %}active{% endif %}" href="/plugins/resource-plugins">리소스 및 성능 플러그인</a>
-                <a class="nav-link {% if plugins_open and not plugins_script and not plugins_resource %}active{% endif %}" href="/plugins/logs">로그 분석 플러그인</a>
+                <a class="nav-link js-soon {% if plugins_resource %}active{% endif %}" href="#" data-toast="준비중입니다.">리소스 및 성능 플러그인 (추후 고도화)</a>
+                <a class="nav-link js-soon {% if plugins_open and not plugins_script and not plugins_resource %}active{% endif %}" href="#" data-toast="준비중입니다.">로그 분석 플러그인 (추후 고도화)</a>
               </nav>
             </div>
             <div class="sidenav-menu-heading">시스템</div>
@@ -121,9 +121,36 @@
       </footer>
     </div>
   </div>
+  <div class="report-fidget" id="reportFidget" data-ai="{{ '1' if openai_enabled or dify_enabled else '0' }}" aria-live="polite">
+    <div class="report-fidget-spinner" aria-hidden="true">
+      <span></span><span></span><span></span>
+      <i class="report-fidget-hub"></i>
+    </div>
+    <p class="report-fidget-title">보고서를 만들고 있어요</p>
+    <p class="report-fidget-line" id="reportFidgetLine"></p>
+  </div>
+  <div class="modal fade" id="guardianConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="guardianConfirmTitle">확인</h5>
+          <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="닫기"></button>
+        </div>
+        <div class="modal-body" id="guardianConfirmBody"></div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">취소</button>
+          <button class="btn btn-danger" type="button" id="guardianConfirmOk">확인</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="guardian-toasts" id="guardianToasts" aria-live="polite" aria-relevant="additions"></div>
+  <script type="application/json" id="guardian-flash">{{ flash_json | default("{}") | safe }}</script>
   <script src="/static/vendor/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/sb-admin-pro/js/scripts.js"></script>
   <script src="/static/js/guardian-scroll.js"></script>
+  <script src="/static/js/guardian-ui.js?v=ui-toast-copy-1"></script>
+  <script src="/static/js/guardian-report-fidget.js?v=report-fidget-1"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

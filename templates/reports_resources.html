@@ -2,60 +2,17 @@
 {% set title = "리소스 및 성능 보고서" %}
 {% set heading = "리소스 및 성능 보고서" %}
 {% block content %}
-<div class="d-flex align-items-center mb-3 report-toolbar">
-  <div class="alert alert-info mb-0 flex-grow-1" role="alert">
-    리소스 및 성능 수집 대상 서버에 쌓인 일자별 자료로, 최근 {{ days }}일 추이를 서버별 보고서로 만듭니다.
-    평균·최대·방향에 더해 디스크 소진 예상일, 바쁜 시간대, 인스턴스별 CPU·메모리·재시작을 함께 봅니다.
-    {% if openai_enabled %}<span class="fw-semibold">AI 총평도 함께 붙습니다.</span>{% else %}<span class="text-muted">AI는 꺼져 있어 규칙 요약만 나옵니다.</span>{% endif %}
-  </div>
-  <div class="dropdown ms-3 flex-shrink-0">
-    <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">추이 보고서 생성</button>
-    <div class="dropdown-menu dropdown-menu-end p-3 report-picker">
-      <form method="post" action="/reports/resources/generate">
-        <input type="hidden" name="selecting" value="1">
-        <div class="small text-muted mb-2">만들 서버</div>
-        {% for name in resource_servers %}
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="servers" value="{{ name }}" id="rr-{{ loop.index }}" checked>
-          <label class="form-check-label" for="rr-{{ loop.index }}">{{ name }}</label>
-        </div>
-        {% else %}
-        <div class="small text-muted">먼저 서버 리소스 분석에 자료를 넣으세요.</div>
-        {% endfor %}
-        <button class="btn btn-sm btn-primary w-100 mt-3" type="submit"{% if not resource_servers %} disabled{% endif %}>선택 생성</button>
-      </form>
-    </div>
-  </div>
+<div class="d-flex align-items-center justify-content-between gap-3 mb-3 report-toolbar">
+  <p class="text-muted small mb-0">
+    수집 서버별로 CPU · 메모리 · 디스크만 먼저 봅니다. 박스를 누르면 보고서 목록이 열리고, 목록에서 고르면 상세를 봅니다.
+    {% if openai_enabled %}<span class="fw-semibold">AI 총평도 붙습니다.</span>{% else %}<span class="text-muted">AI는 꺼져 있어 규칙 요약만 나옵니다.</span>{% endif %}
+  </p>
+  <form class="js-report-generate" method="post" action="/reports/resources/generate">
+    <button class="btn btn-outline-primary" type="submit"{% if not resource_servers %} disabled{% endif %}>자료 있는 서버 모두 만들기</button>
+  </form>
 </div>
-<div class="card mb-4">
-  <div class="card-header">보고서 목록</div>
-  <div class="card-body p-0">
-    {% if reports %}
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 report-list-table">
-        <thead>
-          <tr><th>제목</th><th>플러그인</th><th>기간</th><th class="report-summary">요약</th><th class="report-actions"></th></tr>
-        </thead>
-        <tbody>
-        {% for item in reports %}
-          <tr>
-            <td><a href="/reports/{{ item.id }}">{{ item.title }}</a></td>
-            <td>{{ item.plugin }}</td>
-            <td>{{ item.period_start.date() }} ~ {{ item.period_end.date() }}</td>
-            <td class="report-summary" title="{{ item.summary }}">{{ item.summary }}</td>
-            <td class="report-actions">
-              <form method="post" action="/reports/{{ item.id }}/delete" onsubmit="return confirm('이 보고서를 삭제할까요?');">
-                <button class="btn btn-sm btn-outline-danger" type="submit">삭제</button>
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="p-4 text-muted">아직 리소스 및 성능 보고서가 없습니다.</div>
-    {% endif %}
-  </div>
-</div>
+{% include "_resource_server_cards.html" %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/guardian-resource-reports.js?v=ui-modal-1"></script>
 {% endblock %}

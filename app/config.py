@@ -16,7 +16,7 @@ class AppSettings(BaseModel):
     port: int = 8080
     data_dir: str = "data"
     timezone: str = "Asia/Seoul"
-    seed_demo: bool = True
+    seed_demo: bool = False
 
 
 class DatabaseSettings(BaseModel):

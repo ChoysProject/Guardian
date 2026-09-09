@@ -2,7 +2,6 @@
 {% set title = "로그 수집 대상 서버" %}
 {% set heading = "로그 수집 대상 서버" %}
 {% block content %}
-{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 <div class="card mb-4">
   <div class="card-header">서버 추가</div>
   <div class="card-body">
@@ -11,7 +10,7 @@
       <div class="row gx-3">
         <div class="col-md-4 mb-3">
           <label class="small mb-1" for="name">이름</label>
-          <input class="form-control" id="name" name="name" required placeholder="db-01">
+          <input class="form-control" id="name" name="name" required placeholder="화면에서 구분할 이름">
         </div>
         <div class="col-md-4 mb-3">
           <label class="small mb-1" for="collector_type">수집기</label>
@@ -22,7 +21,7 @@
         </div>
         <div class="col-md-4 mb-3">
           <label class="small mb-1" for="host">호스트</label>
-          <input class="form-control" id="host" name="host" placeholder="10.0.0.12">
+          <input class="form-control" id="host" name="host" placeholder="접속할 IP 또는 호스트명">
         </div>
         <div class="col-md-4 mb-3">
           <label class="small mb-1" for="port">포트</label>
@@ -30,15 +29,15 @@
         </div>
         <div class="col-md-4 mb-3">
           <label class="small mb-1" for="username">SSH 사용자</label>
-          <input class="form-control" id="username" name="username" placeholder="logread">
+          <input class="form-control" id="username" name="username" placeholder="SSH 로그인 계정">
         </div>
         <div class="col-md-4 mb-3">
           <label class="small mb-1" for="key_path">키 경로</label>
-          <input class="form-control" id="key_path" name="key_path" placeholder="C:\Users\me\.ssh\id_ed25519">
+          <input class="form-control" id="key_path" name="key_path" placeholder="개인키 파일의 전체 경로">
         </div>
         <div class="col-12 mb-3" id="log-path-row">
           <label class="small mb-1" for="log_paths">로그 경로 (줄바꿈 또는 쉼표)</label>
-          <textarea class="form-control" id="log_paths" name="log_paths" rows="3" placeholder="/var/log/app/%Y-%m-%d/*.log&#10;/var/log/app/%Y-%m-%d/%H.log"></textarea>
+          <textarea class="form-control" id="log_paths" name="log_paths" rows="3" placeholder="읽을 로그 파일 경로. 줄마다 하나. 일자·시간 패턴과 * 사용 가능"></textarea>
           <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. SSH 비밀번호는 저장하지 않습니다.</div>
         </div>
       </div>

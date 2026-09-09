@@ -12,6 +12,17 @@ def test_health_and_dashboard_and_pipeline():
         home = client.get("/")
         assert home.status_code == 200
         assert "Guardian" in home.text
+        assert "로컬 서비스" in home.text
+        assert "testserver" in home.text
+        reached = client.get("/", headers={"host": "10.20.30.40:8080"})
+        assert reached.status_code == 200
+        assert "10.20.30.40:8080" in reached.text
+        assert "리소스 및 성능" in home.text
+        assert "로그 수집 대상 서버 (추후 고도화)" in home.text
+        assert "로그 분석 보고서 (추후 고도화)" in home.text
+        assert "리소스 및 성능 플러그인 (추후 고도화)" in home.text
+        assert "로그 분석 플러그인 (추후 고도화)" in home.text
+        assert "js-soon" in home.text
 
         collected = client.post("/collect", follow_redirects=True)
         assert collected.status_code == 200
@@ -29,6 +40,11 @@ def test_health_and_dashboard_and_pipeline():
         assert reports_page.status_code == 200
         assert "demo-local" in reports_page.text
         assert "선택 생성" in reports_page.text
+        assert 'id="reportFidget"' in reports_page.text
+        assert "js-report-generate" in reports_page.text
+        assert "guardian-report-fidget.js" in reports_page.text
+        assert 'id="guardianConfirmModal"' in reports_page.text
+        assert "guardian-ui.js" in reports_page.text
         generated = client.post(
             "/reports/generate",
             data={"selecting": "1", "servers": "demo-local"},
@@ -69,6 +85,7 @@ def test_health_and_dashboard_and_pipeline():
         assert "demo-local 전용" in new_plugin.text
         listed = client.get("/reports")
         assert "삭제" in listed.text
+        assert "data-confirm=" in listed.text
 
         servers_page = client.get("/servers/logs")
         assert servers_page.status_code == 200

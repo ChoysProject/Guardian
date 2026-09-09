@@ -14,8 +14,9 @@ RESOURCE_PLUGIN = "resource_report"
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SERVER_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 OK_VALUES = {"ok", "up", "running", "true", "1", "yes", "on"}
-# 셸이 숫자 자리를 비워 둔 경우: "count": } / "count": ,
+# 셸이 숫자 자리를 비워 두거나 df 가 - 를 찍은 경우: "count": } / "inode_pct": -
 _EMPTY_JSON_VALUE = re.compile(r'":\s*([,}\]])')
+_BARE_DASH_JSON_VALUE = re.compile(r":\s*-(?=\s*[,}\]])")
 
 SAMPLE_JSON = {
     "server": "eai-01",
@@ -65,6 +66,71 @@ def today_stamp(when: datetime | None = None) -> str:
 
 def is_resource_plugin(plugin: str | None) -> bool:
     return str(plugin or "").startswith(RESOURCE_PLUGIN)
+
+
+def report_server_name(plugin: str | None) -> str:
+    text = str(plugin or "")
+    prefix = f"{RESOURCE_PLUGIN}:"
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return ""
+
+
+def group_resource_report_rows(
+    reports: list[Any],
+    *,
+    registered: list[str] | None = None,
+    snapshot_names: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for name in [*(registered or []), *(snapshot_names or [])]:
+        if name and name not in seen:
+            names.append(name)
+            seen.add(name)
+    buckets: dict[str, list[Any]] = {name: [] for name in names}
+    for report in reports:
+        server = report_server_name(getattr(report, "plugin", None)) or "기타"
+        if server not in buckets:
+            buckets[server] = []
+            names.append(server)
+        buckets[server].append(report)
+    snap = set(snapshot_names or [])
+    groups = []
+    for name in names:
+        items = buckets.get(name) or []
+        latest = items[0] if items else None
+        metrics = resource_card_metrics(name) if name in snap else {}
+        verdict = ""
+        if latest is not None:
+            verdict = str(getattr(latest, "summary", "") or "").split(" · ")[0]
+        report_items = []
+        for item in items:
+            start = getattr(item, "period_start", None)
+            end = getattr(item, "period_end", None)
+            start_text = start.date().isoformat() if hasattr(start, "date") else str(start or "")
+            end_text = end.date().isoformat() if hasattr(end, "date") else str(end or "")
+            report_items.append(
+                {
+                    "id": getattr(item, "id", None),
+                    "title": str(getattr(item, "title", "") or ""),
+                    "period": f"{start_text} ~ {end_text}".strip(" ~"),
+                    "summary": str(getattr(item, "summary", "") or "").split(" · ")[0],
+                }
+            )
+        groups.append(
+            {
+                "name": name,
+                "reports": items,
+                "report_items": report_items,
+                "reports_json": json.dumps(report_items, ensure_ascii=False),
+                "latest": latest,
+                "has_data": name in snap,
+                "metrics": metrics,
+                "verdict": verdict or metrics.get("status") or "",
+            }
+        )
+    return groups
 
 
 def _safe_server(name: str) -> str:
@@ -136,6 +202,29 @@ def _as_bool(value: Any) -> bool:
     return str(value or "").strip().lower() in OK_VALUES
 
 
+def _fold_mem_extra(mem_block: dict[str, Any], extra: dict[str, Any]) -> None:
+    available = extra.get("mem_available")
+    if isinstance(available, dict) and mem_block.get("available_mb") is None:
+        avail = _as_num(available.get("available_mb"))
+        if avail is not None:
+            mem_block["available_mb"] = avail
+    swap = extra.get("mem_swap")
+    if not isinstance(swap, dict):
+        return
+    if mem_block.get("swap_used_pct") is None:
+        pct = _as_pct(_first(swap, "used_pct", "swap_used_pct"))
+        if pct is not None:
+            mem_block["swap_used_pct"] = pct
+    if mem_block.get("swap_used_mb") is None:
+        used = _as_num(swap.get("used_mb"))
+        if used is not None:
+            mem_block["swap_used_mb"] = used
+    if mem_block.get("swap_total_mb") is None:
+        total = _as_num(swap.get("total_mb"))
+        if total is not None:
+            mem_block["swap_total_mb"] = total
+
+
 def _parse_disk(raw: Any) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     if isinstance(raw, list):
@@ -180,6 +269,9 @@ def _instance_item(name: str, ok: Any, row: dict[str, Any]) -> dict[str, Any]:
     mem_mb = _as_num(_first(row, "mem_mb", "rss_mb", "memory_mb"))
     restarts = _as_int(_first(row, "restarts", "restart_count"))
     pids = _as_int(_first(row, "pids", "pid_count", "processes"))
+    started = str(_first(row, "started_at", "since", "lstart") or "").strip()
+    problem = str(_first(row, "problem", "issue", "fault") or "").strip()
+    uptime_sec = _as_int(_first(row, "uptime_sec", "etime_sec"))
     if cpu is not None:
         item["cpu_pct"] = cpu
     if mem_mb is not None:
@@ -188,6 +280,12 @@ def _instance_item(name: str, ok: Any, row: dict[str, Any]) -> dict[str, Any]:
         item["restarts"] = restarts
     if pids is not None:
         item["pids"] = pids
+    if started:
+        item["started_at"] = started
+    if problem:
+        item["problem"] = problem
+    if uptime_sec is not None:
+        item["uptime_sec"] = uptime_sec
     return item
 
 
@@ -305,9 +403,18 @@ def normalize_snapshot(
         cpu_block["samples"] = samples
     mem_block: dict[str, Any] = {"used_pct": mem_pct, "used_mb": mem_used, "total_mb": mem_total}
     if isinstance(mem_raw, dict):
+        avail = _as_num(_first(mem_raw, "available_mb", "avail_mb"))
+        if avail is not None:
+            mem_block["available_mb"] = avail
         swap = _as_pct(_first(mem_raw, "swap_used_pct", "swap_pct"))
         if swap is not None:
             mem_block["swap_used_pct"] = swap
+        swap_used = _as_num(_first(mem_raw, "swap_used_mb"))
+        swap_total = _as_num(_first(mem_raw, "swap_total_mb"))
+        if swap_used is not None:
+            mem_block["swap_used_mb"] = swap_used
+        if swap_total is not None:
+            mem_block["swap_total_mb"] = swap_total
     hourly_mem = [item["mem_pct"] for item in samples if item.get("mem_pct") is not None]
     if hourly_mem and mem_block.get("used_pct") is None:
         mem_block["used_pct"] = round(sum(hourly_mem) / len(hourly_mem), 1)
@@ -327,12 +434,14 @@ def normalize_snapshot(
     extra = raw.get("extra")
     if isinstance(extra, dict):
         snapshot["extra"] = extra
+        _fold_mem_extra(snapshot["mem"], extra)
     return snapshot
 
 
 def _repair_loose_json(text: str) -> str:
-    """수집 스크립트가 숫자를 비워 둔 JSON을 고친다. 예: {"count": } → {"count": null}."""
-    return _EMPTY_JSON_VALUE.sub(r'": null\1', text)
+    """수집 스크립트가 숫자를 비워 두거나 '-' 로 남긴 JSON을 고친다."""
+    fixed = _EMPTY_JSON_VALUE.sub(r'": null\1', text)
+    return _BARE_DASH_JSON_VALUE.sub(": null", fixed)
 
 
 def parse_payload(text: str, *, fallback_server: str = "", fallback_date: str = "") -> list[dict[str, Any]]:
@@ -536,6 +645,8 @@ EXTRA_SKIP = {
     "error",
     "cpu_usage",
     "mem_usage",
+    "mem_available",
+    "mem_swap",
     "disk_usage",
     "instance_search",
     "proc_service_alive",
@@ -558,6 +669,14 @@ FIELD_LABELS = {
     "bytes": "용량(B)",
     "path": "경로",
     "established": "ESTABLISHED",
+    "time_wait": "TIME_WAIT",
+    "close_wait": "CLOSE_WAIT",
+    "remote": "상대",
+    "state": "상태",
+    "started_at": "마지막 기동",
+    "uptime_sec": "기동 후(초)",
+    "problem": "문제",
+    "restarts": "재시작",
     "count": "건수",
     "open": "열린 수",
     "distro": "배포판",
@@ -720,6 +839,7 @@ def analyze_server(server: str, *, days: int = 7, end: str | None = None) -> dic
     cpu_peak = _series([((item.get("cpu") or {}).get("peak_pct")) for item in items])
     mem_peak = _series([((item.get("mem") or {}).get("peak_pct")) for item in items])
     swap = _series([((item.get("mem") or {}).get("swap_used_pct")) for item in items])
+    last_mem = (items[-1].get("mem") if items else {}) or {}
     load1 = _series([((item.get("cpu") or {}).get("load1")) for item in items])
     cores = _series([((item.get("cpu") or {}).get("cores")) for item in items])
     disk_rows: dict[str, list[float]] = {}
@@ -758,7 +878,7 @@ def analyze_server(server: str, *, days: int = 7, end: str | None = None) -> dic
                 continue
             reported.add(name)
             stat = instance_stats.setdefault(
-                name, {"name": name, "days": 0, "cpu": [], "mem": [], "restarts": 0}
+                name, {"name": name, "days": 0, "cpu": [], "mem": [], "restarts": 0, "started_at": "", "problem": ""}
             )
             stat["days"] += 1
             if inst.get("cpu_pct") is not None:
@@ -767,6 +887,12 @@ def analyze_server(server: str, *, days: int = 7, end: str | None = None) -> dic
                 stat["mem"].append(float(inst["mem_mb"]))
             if inst.get("restarts"):
                 stat["restarts"] += int(inst["restarts"])
+            if inst.get("started_at"):
+                stat["started_at"] = str(inst.get("started_at"))
+            if inst.get("problem"):
+                stat["problem"] = str(inst.get("problem"))
+            elif inst.get("ok"):
+                stat["problem"] = ""
             if not inst.get("ok"):
                 instance_fail.setdefault(name, []).append(date)
         for name in registered:
@@ -799,6 +925,8 @@ def analyze_server(server: str, *, days: int = 7, end: str | None = None) -> dic
                 "cpu_avg": _avg(stat["cpu"]),
                 "mem_avg_mb": _avg(stat["mem"]),
                 "restarts": stat["restarts"],
+                "started_at": stat.get("started_at") or "",
+                "problem": stat.get("problem") or "",
                 "fail_days": len(instance_fail.get(name) or []),
                 "missing_days": len(instance_missing.get(name) or []),
                 "registered": name in registered,
@@ -836,6 +964,12 @@ def analyze_server(server: str, *, days: int = 7, end: str | None = None) -> dic
             "direction": _direction(mem),
             "peak_max": max(mem_peak) if mem_peak else None,
             "swap_max": max(swap) if swap else None,
+            "swap_last": swap[-1] if swap else None,
+            "used_mb": last_mem.get("used_mb"),
+            "total_mb": last_mem.get("total_mb"),
+            "available_mb": last_mem.get("available_mb"),
+            "swap_used_mb": last_mem.get("swap_used_mb"),
+            "swap_total_mb": last_mem.get("swap_total_mb"),
             "series": mem,
         },
         "disks": _notable_disks(disks),
@@ -1113,6 +1247,116 @@ def _fmt_gb(value: float | None) -> str:
     return "-" if value is None else f"{value}GB"
 
 
+def _fmt_mb(value: float | None) -> str:
+    if value is None:
+        return "-"
+    if value >= 1024:
+        gb = round(value / 1024, 1)
+        return f"{gb:g}GB"
+    return f"{int(round(value))}MB"
+
+
+def _worse(*levels: str) -> str:
+    if "danger" in levels:
+        return "danger"
+    if "warn" in levels:
+        return "warn"
+    for level in levels:
+        if level:
+            return level
+    return ""
+
+
+def resource_card_metrics(server: str) -> dict[str, Any]:
+    items = snapshots_for_name(server)
+    if not items:
+        return {}
+    last = items[0]
+    cpu = (last.get("cpu") or {}).get("usage_pct")
+    mem = last.get("mem") or {}
+    disks = _notable_disks(
+        [
+            {
+                "mount": row.get("mount"),
+                "last": row.get("used_pct"),
+                "total_gb": row.get("total_gb"),
+                "free_gb": row.get("free_gb"),
+            }
+            for row in (last.get("disk") or [])
+        ]
+    )
+    worst = disks[0] if disks else None
+    instances = [
+        row
+        for row in (last.get("instances") or [])
+        if row.get("name") and "{{" not in str(row.get("name"))
+    ]
+    live = sum(1 for row in instances if row.get("ok"))
+    swap_pct = mem.get("swap_used_pct")
+    level = _worse(
+        _pct_level(cpu),
+        _pct_level(mem.get("used_pct"), warn=80, danger=90),
+        _pct_level(swap_pct, warn=10, danger=30),
+        _disk_status(worst)[0] if worst else "",
+        "danger" if any(not row.get("ok") for row in instances) else "",
+    ) or "ok"
+    labels = {"ok": "여유", "warn": "주의", "danger": "위험"}
+    mem_size = ""
+    if mem.get("used_mb") is not None and mem.get("total_mb") is not None:
+        mem_size = f"{_fmt_mb(mem.get('used_mb'))} / {_fmt_mb(mem.get('total_mb'))}"
+    return {
+        "date": last.get("date") or "",
+        "cpu_text": _fmt_pct(cpu),
+        "mem_text": _fmt_pct(mem.get("used_pct")),
+        "mem_size": mem_size,
+        "swap_text": _fmt_pct(swap_pct) if swap_pct is not None else "",
+        "disk_text": _fmt_pct(worst.get("last")) if worst else "-",
+        "disk_name": _disk_alias(str(worst.get("mount"))) if worst else "디스크",
+        "instances_text": f"{live}/{len(instances)}" if instances else "",
+        "level": level,
+        "status": labels.get(level, "-"),
+    }
+
+
+def _issue_lines(
+    cpu: dict[str, Any],
+    mem: dict[str, Any],
+    disks: list[dict[str, Any]],
+    fail: dict[str, Any],
+    extras: list[dict[str, Any]],
+) -> list[str]:
+    lines: list[str] = []
+    if _pct_level(cpu.get("last")) in {"warn", "danger"}:
+        lines.append(f"CPU {_fmt_pct(cpu.get('last'))}")
+    if _pct_level(mem.get("last"), warn=80, danger=90) in {"warn", "danger"}:
+        lines.append(f"메모리 {_fmt_pct(mem.get('last'))}")
+    swap_pct = mem.get("swap_last") if mem.get("swap_last") is not None else mem.get("swap_max")
+    if _pct_level(swap_pct, warn=10, danger=30) in {"warn", "danger"}:
+        lines.append(f"스왑 {_fmt_pct(swap_pct)}")
+    for disk in disks:
+        level, label = _disk_status(disk)
+        if level in {"warn", "danger"}:
+            lines.append(f"{_disk_alias(str(disk.get('mount')))} {label}")
+    if fail:
+        lines.append("인스턴스 중단 " + ", ".join(sorted(fail)))
+    for extra in extras:
+        worst = ""
+        for row in (extra.get("stats") or {}).values():
+            worst = _worse(worst, str(row.get("level") or ""))
+        latest = extra.get("latest") or {}
+        if extra.get("key") == "os_ntp_sync" and isinstance(latest, dict) and latest.get("ntp_synchronized") is False:
+            worst = "danger"
+        if extra.get("key") == "mem_oom" and isinstance(latest, dict) and _as_num(latest.get("hits")):
+            worst = "danger"
+        if extra.get("key") == "net_connections" and isinstance(latest, dict):
+            tw = _as_num(latest.get("time_wait"))
+            if tw is not None and tw >= 8000:
+                worst = "warn"
+        if worst in {"warn", "danger"}:
+            lines.append(str(extra.get("title") or extra.get("key")))
+    return lines
+
+
 def _fmt_field(value: Any) -> str:
     if isinstance(value, bool):
         return "예" if value else "아니오"
@@ -1206,10 +1450,14 @@ def _disk_status(disk: dict[str, Any]) -> tuple[str, str]:
 
 
 def _instance_status(row: dict[str, Any]) -> tuple[str, str]:
-    if row.get("fail_days"):
-        return "danger", "중단"
+    problem = str(row.get("problem") or "").strip()
+    problem_label = {"failed": "실패", "stopped": "중지", "not_running": "없음"}.get(problem, problem)
+    if row.get("fail_days") or problem in {"failed", "not_running", "stopped"}:
+        return "danger", problem_label or "중단"
     if row.get("missing_days"):
         return "warn", "자료 없음"
+    if problem:
+        return "warn", problem_label
     return "ok", "정상"
 
 
@@ -1223,6 +1471,7 @@ def _overall_status(
     levels = [
         _pct_level(cpu.get("last")),
         _pct_level(mem.get("last"), warn=80, danger=90),
+        _pct_level(mem.get("swap_last") if mem.get("swap_last") is not None else mem.get("swap_max"), warn=10, danger=30),
     ]
     if fail:
         levels.append("danger")
@@ -1241,7 +1490,7 @@ def _overall_status(
             if isinstance(latest, dict) and _as_num(latest.get("hits")):
                 levels.append("danger")
     if "danger" in levels:
-        return "danger", "손볼 곳이 있습니다"
+        return "danger", "다른 확인이 필요합니다"
     if "warn" in levels:
         return "warn", "대체로 괜찮지만 지켜볼 곳이 있습니다"
     return "ok", "지금은 여유 있습니다"
@@ -1273,6 +1522,10 @@ def _instance_line(row: dict[str, Any]) -> str:
         parts.append(f"MEM 평균 {row.get('mem_avg_mb')}MB")
     if row.get("restarts"):
         parts.append(f"재시작 {row.get('restarts')}회")
+    if row.get("started_at"):
+        parts.append(f"마지막 기동 {row.get('started_at')}")
+    if row.get("problem"):
+        parts.append(f"문제 {row.get('problem')}")
     if row.get("fail_days"):
         parts.append(f"중단 {row.get('fail_days')}일")
     if row.get("missing_days"):
@@ -1455,9 +1708,31 @@ def render_resource_report(
     cpu_note = f"평균 {_fmt_pct(cpu.get('avg'))}"
     if cpu.get("cores") is not None:
         cpu_note += f" · {int(cpu['cores'])}코어"
-    mem_note = f"평균 {_fmt_pct(mem.get('avg'))}"
-    if (mem.get("swap_max") or 0) >= 5:
-        mem_note += f" · 스왑 최대 {_fmt_pct(mem.get('swap_max'))}"
+    mem_bits = []
+    if mem.get("used_mb") is not None and mem.get("total_mb") is not None:
+        mem_bits.append(f"{_fmt_mb(mem.get('used_mb'))} / {_fmt_mb(mem.get('total_mb'))}")
+    if mem.get("available_mb") is not None:
+        mem_bits.append(f"여유 {_fmt_mb(mem.get('available_mb'))}")
+    if mem.get("swap_total_mb") is not None and float(mem.get("swap_total_mb") or 0) <= 0:
+        mem_bits.append("스왑 없음")
+    else:
+        swap_pct = mem.get("swap_last") if mem.get("swap_last") is not None else mem.get("swap_max")
+        if mem.get("swap_used_mb") is not None and mem.get("swap_total_mb") is not None:
+            mem_bits.append(
+                f"스왑 {_fmt_mb(mem.get('swap_used_mb'))} / {_fmt_mb(mem.get('swap_total_mb'))}"
+                + (f" ({_fmt_pct(swap_pct)})" if swap_pct is not None else "")
+            )
+        elif swap_pct is not None:
+            mem_bits.append(f"스왑 {_fmt_pct(swap_pct)}")
+        else:
+            mem_bits.append("스왑 자료 없음")
+    mem_note = " · ".join(mem_bits) or f"평균 {_fmt_pct(mem.get('avg'))}"
+    swap_level = _pct_level(
+        mem.get("swap_last") if mem.get("swap_last") is not None else mem.get("swap_max"),
+        warn=10,
+        danger=30,
+    )
+    mem_level = _worse(mem_level, swap_level)
     kpis = [
         _kpi("CPU 사용률", _fmt_pct(cpu.get("last")), cpu_note, cpu_level),
         _kpi("메모리", _fmt_pct(mem.get("last")), mem_note, mem_level),
@@ -1472,7 +1747,7 @@ def render_resource_report(
             )
         )
     if detail or fail:
-        kpis.append(_kpi("서비스", f"{live}/{len(detail) or len(fail)}", "정상/전체", inst_level))
+        kpis.append(_kpi("인스턴스", f"{live}/{len(detail) or len(fail)}", "정상/전체", inst_level))
 
     disk_rows = []
     for disk in disks:
@@ -1502,6 +1777,10 @@ def render_resource_report(
         note = []
         if row.get("fail_days"):
             note.append(f"중단 {row['fail_days']}일")
+        if row.get("started_at"):
+            note.append(f"기동 {row['started_at']}")
+        if row.get("problem"):
+            note.append(str(row["problem"]))
         if row.get("cpu_avg") is not None:
             note.append(f"CPU {_fmt_pct(row.get('cpu_avg'))}")
         inst_rows.append(
@@ -1514,7 +1793,7 @@ def render_resource_report(
     inst_html = ""
     if inst_rows:
         inst_html = (
-            "<h2>서비스</h2><table><thead><tr><th>이름</th><th>상태</th><th>메모</th></tr></thead><tbody>"
+            "<h2>인스턴스</h2><table><thead><tr><th>이름</th><th>상태</th><th>마지막 기동 / 메모</th></tr></thead><tbody>"
             + "".join(inst_rows)
             + "</tbody></table>"
         )
@@ -1572,6 +1851,14 @@ def render_resource_report(
             + "</tbody></table>"
         )
     extra_html += "".join(extra_blocks)
+    issues = _issue_lines(cpu, mem, disks, fail, extras)
+    issues_html = ""
+    if issues:
+        issues_html = (
+            "<ul class='issues'>"
+            + "".join(f"<li>{escape(line)}</li>" for line in issues)
+            + "</ul>"
+        )
     busy_html = ""
     if busy:
         busy_html = (
@@ -1627,6 +1914,8 @@ def render_resource_report(
     .tag.warn {{ background: var(--warn-bg); color: var(--warn); }}
     .tag.danger {{ background: var(--danger-bg); color: var(--danger); }}
     .empty {{ color: var(--muted); }}
+    .issues {{ margin: 0 0 16px; padding-left: 1.2rem; color: var(--danger); }}
+    .issues li {{ margin: 0.2rem 0; }}
   </style>
 </head>
 <body>
@@ -1634,6 +1923,7 @@ def render_resource_report(
     <h1>{escape(server)} 상태</h1>
     <div class="meta">{escape(start)} ~ {escape(end)} · 자료 {analysis.get('count') or 0}일</div>
     <div class="verdict {overall}">{escape(verdict)}</div>
+    {issues_html}
     <div class="kpis">{''.join(kpis)}</div>
     {busy_html}
     {ai_html}

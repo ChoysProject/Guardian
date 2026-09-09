@@ -2,7 +2,6 @@
 {% set title = "플러그인 추가" %}
 {% set heading = bind_server ~ " 전용 플러그인" if bind_server else "플러그인 추가" %}
 {% block content %}
-{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 <form method="post" action="/plugins/new">
   <input type="hidden" name="stage" value="{{ stage }}">
   {% if bind_server %}<input type="hidden" name="bind_server" value="{{ bind_server }}">{% endif %}
@@ -11,16 +10,16 @@
     <div class="card-body">
       <div class="mb-3">
         <label class="small mb-1" for="name">이름 (영문/숫자/_-)</label>
-        <input class="form-control" id="name" name="name" required value="{{ default_name }}" placeholder="{% if stage == 4 %}eai_resource{% elif stage == 3 %}mci_report{% else %}eai_prod{% endif %}">
+        <input class="form-control" id="name" name="name" required value="{{ default_name }}" placeholder="영문·숫자·밑줄만 쓰는 식별 이름">
       </div>
       <div class="mb-3">
         <label class="small mb-1" for="description">설명</label>
-        <input class="form-control" id="description" name="description"{% if bind_server %} value="{{ bind_server }} 전용"{% endif %}>
+        <input class="form-control" id="description" name="description" placeholder="이 플러그인이 하는 일"{% if bind_server %} value="{{ bind_server }} 전용"{% endif %}>
       </div>
       {% if stage == 3 %}
       <div class="mb-3">
         <label class="small mb-1" for="title">보고서 제목</label>
-        <input class="form-control" id="title" name="title" placeholder="MCI 일일 보고서"{% if bind_server %} value="{{ bind_server }} 일일 보고서"{% endif %}>
+        <input class="form-control" id="title" name="title" placeholder="보고서에 표시할 제목"{% if bind_server %} value="{{ bind_server }} 일일 보고서"{% endif %}>
       </div>
       <div class="mb-3">
         <label class="small mb-1" for="mode">모드</label>
@@ -46,7 +45,7 @@
       </div>
       <div class="mb-0">
         <label class="small mb-1" for="target_patterns">이름 패턴 (쉼표)</label>
-        <input class="form-control" id="target_patterns" name="target_patterns" placeholder="eai-.*">
+        <input class="form-control" id="target_patterns" name="target_patterns" placeholder="서버 이름에 맞는 정규식">
       </div>
     </div>
   </div>
@@ -73,14 +72,14 @@
           <tbody>
           {% for _ in range(5) %}
             <tr>
-              <td><input class="form-control form-control-sm" name="rule_pattern"></td>
+              <td><input class="form-control form-control-sm" name="rule_pattern" placeholder="로그에서 찾을 정규식 또는 문구"></td>
               <td>
                 <select class="form-select form-select-sm" name="rule_severity">
                   <option value="error">error</option>
                   <option value="warn">warn</option>
                 </select>
               </td>
-              <td><input class="form-control form-control-sm" name="rule_signature"></td>
+              <td><input class="form-control form-control-sm" name="rule_signature" placeholder="이 규칙을 구분할 이름"></td>
               <td><input class="form-control form-control-sm" name="rule_min_count" type="number" min="1" value="1"></td>
             </tr>
           {% endfor %}

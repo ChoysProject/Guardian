@@ -18,4 +18,5 @@ config:
   - disk_usage
   - proc_top_cpu
   - proc_service_alive
+  - net_connections
   instances: []

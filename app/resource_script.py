@@ -23,7 +23,7 @@ CATEGORIES: list[dict[str, Any]] = [
         "id": "memory",
         "name": "Memory",
         "modules": [
-            {"id": "mem_usage", "name": "메모리 사용률", "desc": "전체 사용량/사용률", "help": "메모리를 몇 % 쓰는지 봅니다. free를 쓰고, 없으면 /proc/meminfo를 봅니다.", "primary": "free -m", "fallback": "/proc/meminfo", "commands": ["free"], "default": True},
+            {"id": "mem_usage", "name": "메모리 사용률", "desc": "전체 사용량/사용률", "help": "캐시를 빼고 지금 바로 못 쓰는 메모리입니다. top에서 m을 눌러 available을 보는 값과 가깝습니다. 스왑도 같이 남깁니다.", "primary": "free -m", "fallback": "/proc/meminfo", "commands": ["free"], "default": True},
             {"id": "mem_available", "name": "Available 메모리", "desc": "캐시 제외 실질 가용량", "help": "지금 바로 쓸 수 있는 여유 메모리입니다. 캐시까지 감안한 값이라 사용률보다 실제 여유에 가깝습니다.", "primary": "free -m (available)", "fallback": "/proc/meminfo", "commands": ["free"], "default": True},
             {"id": "mem_swap", "name": "Swap 사용량", "desc": "Swap 사용 여부/비율", "help": "메모리가 부족해 디스크로 넘긴 양입니다. 값이 오르면 서버가 느려질 수 있습니다.", "primary": "free -m", "fallback": "/proc/meminfo", "commands": ["free"], "default": True},
             {"id": "mem_oom", "name": "OOM Killer 이력", "desc": "최근 OOM 발생 여부", "help": "메모리 부족으로 프로세스가 강제로 죽은 적이 있는지 봅니다. dmesg/journal 권한이 없으면 이 칸만 비울 수 있습니다.", "primary": "dmesg -T", "fallback": "journalctl -k", "commands": ["dmesg", "journalctl"], "default": False},
@@ -45,7 +45,7 @@ CATEGORIES: list[dict[str, Any]] = [
         "name": "Network",
         "modules": [
             {"id": "net_traffic", "name": "RX/TX 트래픽", "desc": "인터페이스별 송수신량", "help": "각 네트워크 카드가 받고 보낸 총량입니다. ip가 없으면 /proc/net/dev를 봅니다.", "primary": "ip -s link", "fallback": "/proc/net/dev", "commands": ["ip"], "default": False},
-            {"id": "net_connections", "name": "연결 상태 수", "desc": "ESTABLISHED/TIME_WAIT 등", "help": "지금 열려 있는 TCP 연결 수입니다. ss를 쓰고, 없으면 netstat을 씁니다.", "primary": "ss -s", "fallback": "netstat -s", "commands": ["ss", "netstat"], "default": False},
+            {"id": "net_connections", "name": "연결 상태·상대", "desc": "ESTABLISHED/TIME_WAIT와 어디와 붙었는지", "help": "TCP 연결 수와, 지금 어느 주소와 ESTABLISHED·TIME_WAIT 로 붙어 있는지를 남깁니다. ss가 없으면 netstat을 씁니다.", "primary": "ss -tan", "fallback": "netstat -ant", "commands": ["ss", "netstat"], "default": True},
             {"id": "net_errors", "name": "패킷 드랍/에러", "desc": "NIC 레벨 오류", "help": "패킷이 버려지거나 깨진 횟수입니다. 네트워크 카드 이상을 의심할 때 킵니다.", "primary": "ip -s link", "fallback": "/proc/net/dev", "commands": ["ip"], "default": False},
             {"id": "net_listen_ports", "name": "리스닝 포트 목록", "desc": "열린 포트/서비스", "help": "밖에서 들어올 수 있게 열려 있는 포트 목록입니다. ss 또는 netstat이 필요합니다.", "primary": "ss -tulnp", "fallback": "netstat -tulnp", "commands": ["ss", "netstat"], "default": False},
         ],
@@ -57,7 +57,7 @@ CATEGORIES: list[dict[str, Any]] = [
             {"id": "proc_top_cpu", "name": "CPU 상위 프로세스", "desc": "CPU 기준 Top N", "help": "CPU를 많이 쓰는 프로세스 위쪽 몇 개를 남깁니다. 누가 바쁜지 볼 때 씁니다.", "primary": "ps aux --sort=-%cpu", "fallback": "동일", "commands": ["ps"], "default": True},
             {"id": "proc_top_mem", "name": "메모리 상위 프로세스", "desc": "메모리 기준 Top N", "help": "메모리를 많이 쓰는 프로세스 위쪽 몇 개를 남깁니다.", "primary": "ps aux --sort=-%mem", "fallback": "동일", "commands": ["ps"], "default": False},
             {"id": "proc_zombie", "name": "좀비 프로세스", "desc": "좀비 상태 프로세스 수", "help": "이미 끝났는데 부모가 거두지 않은 프로세스 개수입니다. 많으면 부모 프로세스를 의심합니다.", "primary": "ps aux", "fallback": "동일", "commands": ["ps"], "default": False},
-            {"id": "proc_service_alive", "name": "서비스 생존 확인", "desc": "지정 서비스명 실행 여부", "help": "적어 둔 이름이 살아 있는지 봅니다. systemd 서비스면 systemctl, 아니면 프로세스 이름으로 찾습니다.", "primary": "systemctl is-active", "fallback": "pgrep -x", "commands": ["systemctl", "pgrep"], "default": True},
+            {"id": "proc_service_alive", "name": "서비스 생존 확인", "desc": "실행 여부, 마지막 기동, 장애", "help": "적어 둔 이름이 살아 있는지, 언제 기동했는지, systemd 실패·재시작이 있는지를 봅니다. 서비스면 systemctl, 아니면 프로세스 시작 시각을 봅니다.", "primary": "systemctl show / ps etimes", "fallback": "pgrep", "commands": ["systemctl", "pgrep", "ps"], "default": True},
             {"id": "proc_fd_usage", "name": "파일 디스크립터 사용량", "desc": "fd 사용량/한도 대비", "help": "열린 파일·소켓이 얼마나 많은지 봅니다. lsof가 없으면 이 스크립트 자신의 개수만 셉니다.", "primary": "lsof | wc -l", "fallback": "/proc/<pid>/fd", "commands": ["lsof"], "default": False},
         ],
     },
@@ -87,8 +87,20 @@ HEADER = r'''#!/bin/bash
 # 모듈이 없거나 명령이 호환되지 않으면 그 항목만 건너뛰고, JSON 한 줄은 무조건 찍는다.
 # 같은 JSON 을 OUT_DIR/날짜.json 에도 남긴다. 수집 경로가 비면 스크립트 옆 DailyData/ 이다.
 # {{server}} / {{instances}} / {{date}} 는 돌릴 때 서버 값으로 채워진다.
-# SEARCH_NAMES 는 플러그인에 적은 검색어(예: qry-api)이며 만들 때 박힌다.
+# SEARCH_NAMES 는 플러그인에 적은 프로세스 이름이며 만들 때 박힌다.
+# 실행: bash collect.sh
+# 윈도에서 붙여 넣었으면 먼저: sed -i 's/\r$//' collect.sh
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "bash collect.sh 로 실행하세요." >&2
+  exit 1
+fi
+_SRC="${BASH_SOURCE[0]:-$0}"
+if [ -f "$_SRC" ] && grep -q $'\r' "$_SRC" 2>/dev/null; then
+  echo "윈도 줄바꿈(CRLF)입니다. sed -i 's/\\r$//' $_SRC 후 다시 실행하세요." >&2
+  exit 1
+fi
 set +e
+export LC_ALL=C
 SERVER_NAME="{{server}}"
 INSTANCES="{{instances}}"
 SEARCH_NAMES="{{searches}}"
@@ -96,6 +108,12 @@ DATE="{{date}}"
 PLUGIN_NAME="{{plugin}}"
 OUT_DIR="__GUARDIAN_COLLECT_PATH__"
 [ -z "$DATE" ] || [ "$DATE" = "{{date}}" ] && DATE="$(date +%F)"
+# zip만 반입해서 돌리면 {{server}} 가 그대로다. 그때는 이 서버 호스트 이름을 쓴다.
+if [ -z "$SERVER_NAME" ] || [ "$SERVER_NAME" = "{{server}}" ]; then
+  SERVER_NAME="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+fi
+[ "$INSTANCES" = "{{instances}}" ] && INSTANCES=""
+[ "$SEARCH_NAMES" = "{{searches}}" ] && SEARCH_NAMES=""
 if [ -z "$OUT_DIR" ] || [ "$OUT_DIR" = "__GUARDIAN_COLLECT_PATH__" ]; then
   SCRIPT_DIR="."
   if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
@@ -105,6 +123,7 @@ if [ -z "$OUT_DIR" ] || [ "$OUT_DIR" = "__GUARDIAN_COLLECT_PATH__" ]; then
 fi
 WATCH_DIR="${WATCH_DIR:-/var/log}"
 TOP_N="${TOP_N:-5}"
+TAB=$(printf '\t')
 RESULT_BUF=""
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
@@ -131,15 +150,17 @@ json_num() {
   '
 }
 
+json_join() { printf '%s' "$@"; }
+
 add_result() {
   local key="$1"
   local body="$2"
-  body=$(printf '%s' "$body" | sed 's/":[[:space:]]*,/": null,/g; s/":[[:space:]]*}/": null}/g; s/":[[:space:]]*]/": null]/g')
+  body=$(printf '%s' "$body" | sed 's/":[[:space:]]*,/": null,/g; s/":[[:space:]]*}/": null}/g; s/":[[:space:]]*]/": null]/g; s/":[[:space:]]*-[[:space:]]*,/": null,/g; s/":[[:space:]]*-[[:space:]]*}/": null}/g; s/":[[:space:]]*-[[:space:]]*]/": null]/g')
   case "$body" in
     \{*|\[*) ;;
     *) body='{"status":"unavailable"}' ;;
   esac
-  RESULT_BUF="${RESULT_BUF}${key}"$'\t'"${body}"$'\n'
+  RESULT_BUF="${RESULT_BUF}${key}${TAB}${body}"$'\n'
 }
 
 lookup() {
@@ -154,56 +175,184 @@ run_check() {
     add_result "$key" '{"status":"unavailable"}'
   fi
 }
+
+probe_service() {
+  local name="$1"
+  OK=false
+  STARTED_AT=""
+  UPTIME_SEC=""
+  RESTARTS=0
+  PROBLEM=""
+  DETAIL=""
+  local st="" rst="" ts="" pid=""
+  if have_cmd systemctl; then
+    st=$(systemctl show -p ActiveState --value "$name" 2>/dev/null || true)
+    rst=$(systemctl show -p NRestarts --value "$name" 2>/dev/null || true)
+    ts=$(systemctl show -p ActiveEnterTimestamp --value "$name" 2>/dev/null || true)
+    case "$st" in
+      active) OK=true ;;
+      failed) PROBLEM="failed" ;;
+      inactive|dead) PROBLEM="stopped" ;;
+      "") ;;
+      *) PROBLEM="$st" ;;
+    esac
+    RESTARTS=$(printf '%s' "$rst" | awk '{print $1+0}')
+    if [ -n "$ts" ] && [ "$ts" != "n/a" ] && [ "$ts" != "0" ]; then
+      STARTED_AT="$ts"
+    fi
+  fi
+  if have_cmd pgrep; then
+    pid=$(pgrep -x "$name" 2>/dev/null | awk 'NR==1 {print}')
+    [ -z "$pid" ] && pid=$(pgrep -f "$name" 2>/dev/null | awk 'NR==1 {print}')
+  fi
+    if [ -n "$pid" ]; then
+    OK=true
+    case "$PROBLEM" in stopped|not_running) PROBLEM="" ;; esac
+    DETAIL="pid $pid"
+    [ -z "$STARTED_AT" ] && STARTED_AT=$(ps -o lstart= -p "$pid" 2>/dev/null | awk '{$1=$1; print}')
+    UPTIME_SEC=$(ps -o etimes= -p "$pid" 2>/dev/null | awk '{print $1+0}')
+  fi
+  if [ "$OK" != true ] && [ -z "$PROBLEM" ]; then
+    PROBLEM="not_running"
+  fi
+}
+
+instance_json_row() {
+  local name="$1"
+  json_join '{"name": "' "$(json_escape "$name")" '", "ok": ' "$OK" ', "started_at": "' "$(json_escape "$STARTED_AT")" '", "uptime_sec": ' "$(json_num "$UPTIME_SEC")" ', "restarts": ' "$(json_num "$RESTARTS")" ', "problem": "' "$(json_escape "$PROBLEM")" '", "detail": "' "$(json_escape "$DETAIL")" '"}'
+}
 '''
 
 FOOTER = r'''
-# FOOTER: 모은 것만 JSON 으로 찍는다. 여기까지는 무조건 온다.
-cpu_json='{"usage_pct": null}'
-mem_json='{"used_pct": null}'
-disk_json='[]'
-inst_json='[]'
-top_json='[]'
-extra_parts=""
+# FOOTER: 모은 것만 JSON 으로 찍는다. jq 는 쓰지 않는다.
+# 셸에서 JSON 을 이어 붙이면 따옴표·% 에 깨지므로, python 이 있으면 dumps, 없으면 awk.
+mkdir -p "$OUT_DIR" 2>/dev/null
+BUF="$OUT_DIR/.guardian_buf.$$"
+printf '%s' "$RESULT_BUF" > "$BUF" 2>/dev/null
+JSON_LINE=""
 
-cpu_usage=$(lookup cpu_usage)
-cpu_load=$(lookup cpu_load)
-cpu_cores=$(lookup cpu_core_count)
-if [ -n "$cpu_usage$cpu_load$cpu_cores" ]; then
-  cpu_json=$(printf '{"usage_pct": %s, "load1": %s, "cores": %s}' \
-    "$(json_num "$(printf '%s' "$cpu_usage" | sed -n 's/.*"usage_pct":[[:space:]]*\([0-9.]*\).*/\1/p')")" \
-    "$(json_num "$(printf '%s' "$cpu_load" | sed -n 's/.*"load1":[[:space:]]*\([0-9.]*\).*/\1/p')")" \
-    "$(json_num "$(printf '%s' "$cpu_cores" | sed -n 's/.*"cores":[[:space:]]*\([0-9]*\).*/\1/p')")")
-  case "$cpu_json" in \{*) ;; *) cpu_json='{"usage_pct": null}' ;; esac
+emit_json_python() {
+  "$1" - "$SERVER_NAME" "$DATE" "$BUF" 2>/dev/null <<'PY'
+import json, sys
+server, date, path = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    data = open(path, "rb").read()
+except Exception:
+    data = b""
+if sys.version_info[0] >= 3:
+    data = data.decode("utf-8", "replace")
+extra = {}
+for line in data.splitlines():
+    if "\t" not in line:
+        continue
+    key, body = line.split("\t", 1)
+    body = body.strip()
+    try:
+        extra[key] = json.loads(body)
+    except Exception:
+        extra[key] = {"status": "unavailable"}
+
+def num(block, field):
+    if not isinstance(block, dict):
+        return None
+    val = block.get(field)
+    if isinstance(val, bool):
+        return None
+    try:
+        return val + 0
+    except Exception:
+        return None
+
+cu, cl, cc = extra.get("cpu_usage"), extra.get("cpu_load"), extra.get("cpu_core_count")
+cpu = {"usage_pct": num(cu, "usage_pct"), "load1": num(cl, "load1"), "cores": num(cc, "cores")}
+mu = extra.get("mem_usage")
+if isinstance(mu, dict) and ("used_pct" in mu or "used_mb" in mu):
+    mem = mu
+else:
+    ma, ms = extra.get("mem_available"), extra.get("mem_swap")
+    if ma or ms:
+        mem = {
+            "used_pct": num(ms, "used_pct"),
+            "available_mb": num(ma, "available_mb"),
+            "swap_used_mb": num(ms, "used_mb"),
+            "swap_total_mb": num(ms, "total_mb"),
+        }
+    else:
+        mem = {"used_pct": None}
+disk = extra.get("disk_usage")
+if not isinstance(disk, list):
+    disk = []
+inst = extra.get("instance_search")
+if not isinstance(inst, list):
+    inst = extra.get("proc_service_alive")
+if not isinstance(inst, list):
+    inst = []
+top = extra.get("proc_top_cpu")
+if not isinstance(top, list):
+    top = []
+doc = {"server": server, "date": date, "cpu": cpu, "mem": mem, "disk": disk, "instances": inst, "top": top, "extra": extra}
+sys.stdout.write(json.dumps(doc, ensure_ascii=True, separators=(",", ":")) + "\n")
+PY
+}
+
+if have_cmd python3; then
+  JSON_LINE=$(emit_json_python python3)
+elif have_cmd python; then
+  JSON_LINE=$(emit_json_python python)
 fi
-mem_got=$(lookup mem_usage)
-case "$mem_got" in \{*) mem_json=$mem_got ;; esac
-disk_got=$(lookup disk_usage)
-case "$disk_got" in \[*) disk_json=$disk_got ;; esac
-inst_got=$(lookup instance_search)
-[ -z "$inst_got" ] && inst_got=$(lookup proc_service_alive)
-case "$inst_got" in \[*) inst_json=$inst_got ;; esac
-top_got=$(lookup proc_top_cpu)
-case "$top_got" in \[*) top_json=$top_got ;; esac
+JSON_LINE=$(printf '%s' "$JSON_LINE" | tr -d '\r' | awk 'NF{print; exit}')
 
-while IFS=$'\t' read -r key body || [ -n "$key" ]; do
-  [ -z "$key" ] && continue
-  body=$(printf '%s' "$body" | sed 's/":[[:space:]]*,/": null,/g; s/":[[:space:]]*}/": null}/g; s/":[[:space:]]*]/": null]/g')
-  case "$body" in \{*|\[*) ;; *) body='{"status":"unavailable"}' ;; esac
-  [ -n "$extra_parts" ] && extra_parts="$extra_parts, "
-  extra_parts="$extra_parts\"$key\": $body"
-done <<RES
-${RESULT_BUF}
-RES
-[ -z "$extra_parts" ] && extra_parts='"empty": true'
-
-JSON_LINE=$(printf '{"server": "%s", "date": "%s", "cpu": %s, "mem": %s, "disk": %s, "instances": %s, "top": %s, "extra": {%s}}' \
-  "$(json_escape "$SERVER_NAME")" "$DATE" "$cpu_json" "$mem_json" "$disk_json" "$inst_json" "$top_json" "$extra_parts")
 if [ -z "$JSON_LINE" ]; then
-  JSON_LINE=$(printf '{"server":"%s","date":"%s","cpu":{"usage_pct":null},"mem":{"used_pct":null},"disk":[],"instances":[],"top":[],"extra":{"status":"partial"}}' \
-    "$(json_escape "$SERVER_NAME")" "$DATE")
+  JSON_LINE=$(GUARDIAN_SERVER="$SERVER_NAME" GUARDIAN_DATE="$DATE" awk '
+    BEGIN { server=ENVIRON["GUARDIAN_SERVER"]; date=ENVIRON["GUARDIAN_DATE"] }
+    {
+      tab = index($0, "\t")
+      if (tab < 2) next
+      key = substr($0, 1, tab-1)
+      body = substr($0, tab+1)
+      n++; keys[n]=key; bodies[key]=body
+    }
+    function nget(s, k,   m) {
+      if (s == "") return "null"
+      if (match(s, "\"" k "\"[ \t]*:[ \t]*-?[0-9]+(\\.[0-9]+)?")) {
+        m = substr(s, RSTART, RLENGTH)
+        sub(/^[^:]+:[ \t]*/, "", m)
+        return m
+      }
+      return "null"
+    }
+    END {
+      cpu = "{\"usage_pct\":" nget(bodies["cpu_usage"], "usage_pct") ",\"load1\":" nget(bodies["cpu_load"], "load1") ",\"cores\":" nget(bodies["cpu_core_count"], "cores") "}"
+      mem = "{\"used_pct\":" nget(bodies["mem_swap"], "used_pct") ",\"available_mb\":" nget(bodies["mem_available"], "available_mb") ",\"swap_used_mb\":" nget(bodies["mem_swap"], "used_mb") ",\"swap_total_mb\":" nget(bodies["mem_swap"], "total_mb") "}"
+      if (bodies["mem_usage"] ~ /^[ \t]*\{/) mem = bodies["mem_usage"]
+      disk = "[]"
+      if (bodies["disk_usage"] ~ /^[ \t]*\[/) disk = bodies["disk_usage"]
+      inst = "[]"
+      if (bodies["instance_search"] ~ /^[ \t]*\[/) {
+        inst = bodies["instance_search"]
+      } else if (bodies["proc_service_alive"] ~ /^[ \t]*\[/) {
+        inst = bodies["proc_service_alive"]
+      }
+      top = "[]"
+      if (bodies["proc_top_cpu"] ~ /^[ \t]*\[/) top = bodies["proc_top_cpu"]
+      extra = ""
+      for (i = 1; i <= n; i++) {
+        k = keys[i]; b = bodies[k]
+        if (b !~ /^[ \t]*[\{\[]/) b = "{\"status\":\"unavailable\"}"
+        if (extra != "") extra = extra ","
+        extra = extra "\"" k "\":" b
+      }
+      if (extra == "") extra = "\"empty\":true"
+      gsub(/\\/, "\\\\", server); gsub(/"/, "\\\"", server)
+      printf "{\"server\":\"%s\",\"date\":\"%s\",\"cpu\":%s,\"mem\":%s,\"disk\":%s,\"instances\":%s,\"top\":%s,\"extra\":{%s}}\n", server, date, cpu, mem, disk, inst, top, extra
+    }
+  ' "$BUF" 2>/dev/null)
+fi
+rm -f "$BUF" 2>/dev/null
+if [ -z "$JSON_LINE" ]; then
+  JSON_LINE="{\"server\":\"\",\"date\":\"$DATE\",\"cpu\":{\"usage_pct\":null},\"mem\":{\"used_pct\":null},\"disk\":[],\"instances\":[],\"top\":[],\"extra\":{\"status\":\"partial\"}}"
 fi
 printf '%s\n' "$JSON_LINE"
-mkdir -p "$OUT_DIR" 2>/dev/null
 printf '%s\n' "$JSON_LINE" > "$OUT_DIR/${DATE}.json" 2>/dev/null
 '''
 
@@ -264,9 +413,15 @@ check_cpu_ctxswitch() {
     "mem_usage": r'''
 check_mem_usage() {
   if have_cmd free; then
-    add_result mem_usage "$(free -m | awk '/^Mem:/ {pct=($2>0)?($3*100/$2):0; printf "{\"used_pct\": %.1f, \"used_mb\": %s, \"total_mb\": %s}", pct, $3, $2}')"
+    add_result mem_usage "$(free -m | awk '
+      /^Mem:/ { t=$2; avail=$7; if (avail=="") avail=$4; used=t-avail; if (used<0) used=0; pct=(t>0)?(used*100/t):0 }
+      /^Swap:/ { st=$2; su=$3; sp=(st>0)?(su*100/st):0 }
+      END { printf "{\"used_pct\": %.1f, \"used_mb\": %.0f, \"total_mb\": %.0f, \"available_mb\": %.0f, \"swap_used_pct\": %.1f, \"swap_used_mb\": %.0f, \"swap_total_mb\": %.0f}", pct+0, used+0, t+0, avail+0, sp+0, su+0, st+0 }')"
   elif [ -r /proc/meminfo ]; then
-    add_result mem_usage "$(awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END {u=t-a; pct=(t>0)?(u*100/t):0; printf "{\"used_pct\": %.1f, \"used_mb\": %.0f, \"total_mb\": %.0f}", pct, u/1024, t/1024}' /proc/meminfo)"
+    add_result mem_usage "$(awk '
+      /MemTotal/{t=$2} /MemAvailable/{a=$2} /SwapTotal/{st=$2} /SwapFree/{sf=$2}
+      END { u=t-a; if (u<0) u=0; pct=(t>0)?(u*100/t):0; su=st-sf; if (su<0) su=0; sp=(st>0)?(su*100/st):0;
+        printf "{\"used_pct\": %.1f, \"used_mb\": %.0f, \"total_mb\": %.0f, \"available_mb\": %.0f, \"swap_used_pct\": %.1f, \"swap_used_mb\": %.0f, \"swap_total_mb\": %.0f}", pct, u/1024, t/1024, a/1024, sp, su/1024, st/1024 }' /proc/meminfo)"
   else
     add_result mem_usage '{"status":"unavailable"}'
   fi
@@ -320,7 +475,7 @@ check_disk_inode() {
   local rows=""
   if have_cmd df; then
     rows=$(df -Pi 2>/dev/null || df -i 2>/dev/null)
-    add_result disk_inode "[$(printf '%s' "$rows" | awk 'NR>1 && $6 ~ /^\// {gsub(/%/,"",$5); if(n++) printf ", "; printf "{\"mount\": \"%s\", \"inode_pct\": %s}", $6, $5}')]"
+    add_result disk_inode "[$(printf '%s' "$rows" | awk 'NR>1 && $6 ~ /^\// {gsub(/%/,"",$5); pct=($5 ~ /^-?[0-9]+(\.[0-9]+)?$/)?$5:"null"; if(n++) printf ", "; printf "{\"mount\": \"%s\", \"inode_pct\": %s}", $6, pct}')]"
   else
     add_result disk_inode '{"status":"unavailable"}'
   fi
@@ -370,13 +525,40 @@ check_net_traffic() {
 ''',
     "net_connections": r'''
 check_net_connections() {
+  local src=""
   if have_cmd ss; then
-    add_result net_connections "$(ss -s 2>/dev/null | awk '/estab/{e=$2} /TCP:/{tw=$6} END {printf "{\"established\": %s}", e+0}')"
+    src=$(ss -tan 2>/dev/null)
   elif have_cmd netstat; then
-    add_result net_connections "$(netstat -ant 2>/dev/null | awk '/ESTABLISHED/{e++} END {printf "{\"established\": %s}", e+0}')"
+    src=$(netstat -ant 2>/dev/null)
   else
     add_result net_connections '{"status":"unavailable"}'
+    return
   fi
+  add_result net_connections "$(printf '%s\n' "$src" | awk '
+    BEGIN { est=0; tw=0; cw=0 }
+    NR==1 && ($0 ~ /State|Netid|Proto/) { next }
+    {
+      if ($1 ~ /^(tcp|udp|TCP|UDP)/) { st=toupper($NF); loc=$4; rem=$5 }
+      else { st=toupper($1); loc=$4; rem=$5 }
+      if (st ~ /ESTAB/) est++
+      else if (st ~ /TIME-WAIT|TIME_WAIT/) tw++
+      else if (st ~ /CLOSE-WAIT|CLOSE_WAIT/) cw++
+      if (st ~ /LISTEN/ || rem=="" || rem=="*" || rem ~ /:\*$/) next
+      key=st "\t" loc "\t" rem
+      c[key]++
+    }
+    END {
+      printf "{\"established\": %s, \"time_wait\": %s, \"close_wait\": %s, \"peers\": [", est+0, tw+0, cw+0
+      n=0
+      for (k in c) {
+        if (n>=25) break
+        split(k, a, "\t")
+        if (n++) printf ", "
+        gsub(/"/, "", a[1]); gsub(/"/, "", a[2]); gsub(/"/, "", a[3])
+        printf "{\"state\": \"%s\", \"local\": \"%s\", \"remote\": \"%s\", \"count\": %s}", a[1], a[2], a[3], c[k]
+      }
+      printf "]}"
+    }')"
 }
 ''',
     "net_errors": r'''
@@ -428,22 +610,14 @@ check_proc_zombie() {
 ''',
     "proc_service_alive": r'''
 check_proc_service_alive() {
-  local body="" first=1 name ok
+  local body="" first=1 name
   for name in $INSTANCES; do
     [ -z "$name" ] && continue
-    ok=false
-    if have_cmd systemctl && systemctl is-active --quiet "$name" 2>/dev/null; then
-      ok=true
-    elif have_cmd pgrep && pgrep -x "$name" >/dev/null 2>&1; then
-      ok=true
-    elif have_cmd pgrep && pgrep -f "$name" >/dev/null 2>&1; then
-      ok=true
-    fi
+    probe_service "$name"
     [ $first -eq 1 ] || body="$body, "
     first=0
-    body="$body{\"name\": \"$(json_escape "$name")\", \"ok\": $ok}"
+    body="$body$(instance_json_row "$name")"
   done
-  [ -z "$body" ] && body=""
   add_result proc_service_alive "[$body]"
 }
 ''',
@@ -547,36 +721,31 @@ def module_by_id(module_id: str) -> dict[str, Any] | None:
 
 INSTANCE_SEARCH = r'''
 check_instance_search() {
-  local body="" first=1 name line pid cpu mem cmd ok pids detail
+  local body="" first=1 name line pid cpu mem cmd
   for name in $SEARCH_NAMES; do
     [ -z "$name" ] && continue
-    ok=false
+    probe_service "$name"
     pid=""
-    cpu="0"
-    mem="0"
+    cpu="null"
+    mem="null"
     cmd=""
-    pids=0
-    detail=""
     if have_cmd ps; then
       line=$(ps aux 2>/dev/null | grep -F -- "$name" | grep -v grep | awk 'NR==1 {print}')
       if [ -n "$line" ]; then
-        ok=true
+        OK=true
+        [ "$PROBLEM" = "not_running" ] && PROBLEM=""
         pid=$(printf '%s' "$line" | awk '{print $2}')
-        cpu=$(printf '%s' "$line" | awk '{print $3}')
-        mem=$(printf '%s' "$line" | awk '{print $4}')
+        cpu=$(json_num "$(printf '%s' "$line" | awk '{print $3}')")
+        mem=$(json_num "$(printf '%s' "$line" | awk '{print $4}')")
         cmd=$(printf '%s' "$line" | awk '{for(i=11;i<=NF;i++) printf (i==11?$i:" "$i)}')
+        [ -z "$DETAIL" ] && DETAIL="pid $pid"
+        [ -z "$STARTED_AT" ] && STARTED_AT=$(ps -o lstart= -p "$pid" 2>/dev/null | awk '{$1=$1; print}')
+        [ -z "$UPTIME_SEC" ] && UPTIME_SEC=$(ps -o etimes= -p "$pid" 2>/dev/null | awk '{print $1+0}')
       fi
-    elif have_cmd pgrep && pgrep -f "$name" >/dev/null 2>&1; then
-      ok=true
-      pid=$(pgrep -f "$name" | awk 'NR==1 {print}')
-    fi
-    if [ "$ok" = true ] && [ -n "$pid" ]; then
-      pids=1
-      detail="pid $pid"
     fi
     [ $first -eq 1 ] || body="$body, "
     first=0
-    body="$body{\"name\": \"$(json_escape "$name")\", \"ok\": $ok, \"pid\": \"$(json_escape "$pid")\", \"pids\": $pids, \"cpu_pct\": $cpu, \"mem_pct\": $mem, \"detail\": \"$(json_escape "$detail")\", \"cmd\": \"$(json_escape "$cmd")\"}"
+    body="$body{\"name\": \"$(json_escape "$name")\", \"ok\": $OK, \"started_at\": \"$(json_escape "$STARTED_AT")\", \"uptime_sec\": $(json_num "$UPTIME_SEC"), \"restarts\": $(json_num "$RESTARTS"), \"problem\": \"$(json_escape "$PROBLEM")\", \"pid\": \"$(json_escape "$pid")\", \"cpu_pct\": $cpu, \"mem_pct\": $mem, \"detail\": \"$(json_escape "$DETAIL")\", \"cmd\": \"$(json_escape "$cmd")\"}"
   done
   add_result instance_search "[$body]"
 }
@@ -642,7 +811,10 @@ def build_script(
     kept, blocked = select_modules(chosen, parse_denied(denied))
     searches = clean_search_names(instances)
     folder = script_folder_name(plugin_name)
-    header = HEADER.replace("{{searches}}", " ".join(searches)).replace("{{plugin}}", folder)
+    header = (
+        HEADER.replace('SEARCH_NAMES="{{searches}}"', f'SEARCH_NAMES="{" ".join(searches)}"')
+        .replace("{{plugin}}", folder)
+    )
     parts = [header.rstrip(), ""]
     for name in kept:
         body = MODULES.get(name, "").strip()

@@ -1,0 +1,120 @@
+{% set show_actions = show_actions|default(true) %}
+{% if report_groups %}
+<div class="server-report-grid">
+  {% for group in report_groups %}
+  {% set metrics = group.metrics or {} %}
+  <article
+    class="server-report-card {{ metrics.level or '' }}"
+    data-server="{{ group.name | e }}"
+    data-reports="{{ group.reports_json | e }}"
+    {% if group.report_items %}role="button" tabindex="0"{% endif %}
+  >
+    <div class="server-report-card-head">
+      <div class="min-w-0">
+        <div class="server-report-name">{{ group.name }}</div>
+        <div class="small text-muted text-truncate report-summary">
+          {% if group.verdict %}{{ group.verdict }}
+          {% elif group.has_data %}자료는 있는데 아직 보고서가 없습니다.
+          {% else %}아직 넣은 자료가 없습니다.{% endif %}
+        </div>
+      </div>
+      {% if metrics.status %}
+      <span class="tag {{ metrics.level }}">{{ metrics.status }}</span>
+      {% endif %}
+    </div>
+    {% if metrics %}
+    <div class="server-report-metrics">
+      <div>
+        <div class="label">CPU</div>
+        <div class="value">{{ metrics.cpu_text }}</div>
+      </div>
+      <div>
+        <div class="label">메모리</div>
+        <div class="value">{{ metrics.mem_text }}</div>
+        {% if metrics.mem_size %}<div class="note">{{ metrics.mem_size }}{% if metrics.swap_text %} · 스왑 {{ metrics.swap_text }}{% endif %}</div>{% endif %}
+      </div>
+      <div>
+        <div class="label">{{ metrics.disk_name }}</div>
+        <div class="value">{{ metrics.disk_text }}</div>
+      </div>
+      {% if metrics.instances_text %}
+      <div>
+        <div class="label">인스턴스</div>
+        <div class="value">{{ metrics.instances_text }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% if metrics.date %}<div class="small text-muted mt-2">최근 자료 {{ metrics.date }}{% if group.report_items %} · 보고서 {{ group.report_items | length }}건{% endif %}</div>{% endif %}
+    {% endif %}
+    {% if show_actions %}
+    <div class="server-report-card-actions report-actions">
+      <form class="js-report-generate" method="post" action="/reports/resources/generate">
+        <input type="hidden" name="selecting" value="1">
+        <input type="hidden" name="servers" value="{{ group.name }}">
+        <button class="btn btn-sm btn-outline-primary" type="submit"{% if not group.has_data %} disabled{% endif %}>
+          {% if group.latest %}다시 만들기{% else %}보고서 만들기{% endif %}
+        </button>
+      </form>
+      {% if group.latest %}
+      <button class="btn btn-sm btn-outline-danger js-report-delete" type="button">삭제</button>
+      {% endif %}
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+{% if show_actions %}
+<div class="card">
+  <div class="card-body text-muted">수집 대상 서버가 없습니다. 먼저 리소스 및 성능 수집 대상 서버에 자료를 넣으세요.</div>
+</div>
+{% else %}
+<p class="text-muted mb-0">아직 리소스 수집 대상이 없습니다.</p>
+{% endif %}
+{% endif %}
+
+<div class="modal fade" id="resourceReportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button class="btn btn-sm btn-outline-secondary me-2 d-none" type="button" id="resourceReportBack">목록</button>
+        <h5 class="modal-title" id="resourceReportTitle">보고서</h5>
+        <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="닫기"></button>
+      </div>
+      <div class="modal-body p-0" id="resourceReportListPane">
+        <div class="list-group list-group-flush" id="resourceReportList"></div>
+      </div>
+      <div class="modal-body p-2 d-none" id="resourceReportViewPane">
+        <iframe class="guardian-report-frame" id="resourceReportFrame" title="리소스 추이 보고서"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="resourceDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="resourceDeleteTitle">보고서 삭제</h5>
+        <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="닫기"></button>
+      </div>
+      <div class="modal-body p-0" id="resourceDeleteListPane">
+        <label class="d-flex align-items-center gap-2 px-3 py-2 border-bottom small mb-0">
+          <input class="form-check-input" type="checkbox" id="resourceDeleteAll">
+          <span>전체 선택</span>
+        </label>
+        <div class="list-group list-group-flush" id="resourceDeleteList"></div>
+      </div>
+      <div class="modal-body d-none" id="resourceDeleteConfirmPane">
+        <p class="mb-2" id="resourceDeleteConfirmText"></p>
+        <ul class="small text-muted mb-0 ps-3" id="resourceDeleteConfirmItems"></ul>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary d-none" type="button" id="resourceDeleteBack">목록</button>
+        <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-danger" type="button" id="resourceDeleteSubmit">선택한 보고서 삭제</button>
+      </div>
+    </div>
+  </div>
+</div>
+<form class="d-none" id="resourceDeleteForm" method="post" action="/reports/delete"></form>
