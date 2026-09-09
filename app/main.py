@@ -28,6 +28,7 @@ from app.resources import (
     SAMPLE_JSON,
     delete_snapshot,
     generate_resource_reports,
+    group_resource_report_rows,
     import_snapshots_from_path,
     is_resource_plugin,
     list_snapshots,
@@ -103,6 +104,18 @@ app = FastAPI(title=settings.app.name, lifespan=lifespan, dependencies=[Depends(
 app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 
 
+def _service_bind(request: Request) -> str:
+    """브라우저가 이 기동 서버에 들어온 주소. 설정 파일의 127.0.0.1 고정값이 아니다."""
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    if host:
+        return host
+    hostname = request.url.hostname or settings.app.host or "127.0.0.1"
+    port = request.url.port or settings.app.port
+    if port and int(port) not in (80, 443):
+        return f"{hostname}:{port}"
+    return str(hostname)
+
+
 def _ctx(request: Request, **extra):
     data = {
         "request": request,
@@ -110,11 +123,25 @@ def _ctx(request: Request, **extra):
         "auth_enabled": settings.auth.enabled,
         "dify_enabled": settings.dify.enabled,
         "report_time": settings.scheduler.daily_report_time,
-        "bind": f"{settings.app.host}:{settings.app.port}",
+        "bind": _service_bind(request),
         "collect_lookback_hours": settings.collect.lookback_hours,
         "openai_enabled": bool(settings.openai.enabled and settings.openai.api_key),
+        "error": "",
+        "notice": "",
+        "saved": 0,
+        "tested": "",
     }
     data.update(extra)
+    flash = json.dumps(
+        {
+            "error": str(data.get("error") or ""),
+            "notice": str(data.get("notice") or ""),
+            "saved": int(data.get("saved") or 0),
+            "tested": str(data.get("tested") or ""),
+        },
+        ensure_ascii=False,
+    )
+    data["flash_json"] = flash.replace("<", "\\u003c").replace(">", "\\u003e")
     return data
 
 
@@ -165,17 +192,40 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     runs = db.query(CollectRun).order_by(CollectRun.started_at.desc()).limit(5).all()
-    reports = db.query(Report).order_by(Report.created_at.desc()).limit(5).all()
+    reports = db.query(Report).order_by(Report.created_at.desc()).all()
+    resource_reports = [item for item in reports if is_resource_plugin(item.plugin)]
+    log_reports = [item for item in reports if not is_resource_plugin(item.plugin)]
+    snapshot_names = snapshot_server_names()
+    resource_servers = _resource_servers(db)
+    report_groups = group_resource_report_rows(
+        resource_reports,
+        registered=[server.name for server in resource_servers],
+        snapshot_names=snapshot_names,
+    )
+    resource_attention = sum(
+        1 for row in report_groups if (row.get("metrics") or {}).get("level") in {"warn", "danger"}
+    )
     counts = {
         "servers": len(servers),
+        "resource_servers": len(resource_servers),
         "findings": db.query(Finding).count(),
         "errors": db.query(Finding).filter(Finding.severity == "error").count(),
-        "reports": db.query(Report).count(),
+        "reports": len(log_reports),
+        "resource_reports": len(resource_reports),
+        "resource_attention": resource_attention,
     }
     return templates.TemplateResponse(
         request,
         "dashboard.html",
-        _ctx(request, servers=servers, findings=findings, runs=runs, reports=reports, counts=counts),
+        _ctx(
+            request,
+            servers=servers,
+            findings=findings,
+            runs=runs,
+            reports=log_reports[:5],
+            counts=counts,
+            report_groups=report_groups,
+        ),
     )
 
 
@@ -419,7 +469,7 @@ def resource_server_delete(server_id: int, db: Session = Depends(get_db)):
     if not server:
         raise HTTPException(404)
     if server.collect_logs:
-        # 로그 수집도 하는 서버면 리소스 쪽에서만 뺀다.
+        # 로그 수집도 하는 서버면 리소스 수집 대상에서만 제거한다.
         server.collect_resources = False
         db.commit()
     else:
@@ -731,10 +781,20 @@ def reports_resources_page(request: Request, db: Session = Depends(get_db)):
         for item in db.query(Report).order_by(Report.created_at.desc()).all()
         if is_resource_plugin(item.plugin)
     ]
+    snapshot_names = snapshot_server_names()
+    registered = [server.name for server in _resource_servers(db)]
     return templates.TemplateResponse(
         request,
         "reports_resources.html",
-        _ctx(request, reports=items, resource_servers=snapshot_server_names(), days=7),
+        _ctx(
+            request,
+            reports=items,
+            report_groups=group_resource_report_rows(
+                items, registered=registered, snapshot_names=snapshot_names
+            ),
+            resource_servers=snapshot_names,
+            days=7,
+        ),
     )
 
 
@@ -749,20 +809,60 @@ def reports_resources_generate(
     return RedirectResponse("/reports/resources", status_code=303)
 
 
-@app.post("/reports/{report_id}/delete")
-def reports_delete(report_id: int, db: Session = Depends(get_db)):
-    item = db.get(Report, report_id)
-    if not item:
-        raise HTTPException(404)
-    target = "/reports/resources" if is_resource_plugin(item.plugin) else "/reports"
+def _remove_report(db: Session, item: Report) -> None:
     for path in (item.markdown_path, item.html_path):
         if path:
             file_path = Path(path)
             if file_path.exists():
                 file_path.unlink()
     db.delete(item)
+
+
+def _reports_after_delete(plugin: str | None, count: int) -> str:
+    target = "/reports/resources" if is_resource_plugin(plugin) else "/reports"
+    return f"{target}?toast=deleted&count={count}"
+
+
+@app.post("/reports/delete")
+def reports_delete_many(
+    db: Session = Depends(get_db),
+    report_ids: list[int] = Form(default=[]),
+):
+    removed = 0
+    plugin = None
+    for report_id in report_ids:
+        item = db.get(Report, report_id)
+        if not item:
+            continue
+        if plugin is None:
+            plugin = item.plugin
+        _remove_report(db, item)
+        removed += 1
+    if not removed:
+        return RedirectResponse("/reports/resources?toast=delete_none", status_code=303)
     db.commit()
-    return RedirectResponse(target, status_code=303)
+    return RedirectResponse(_reports_after_delete(plugin, removed), status_code=303)
+
+
+@app.post("/reports/{report_id}/delete")
+def reports_delete(report_id: int, db: Session = Depends(get_db)):
+    item = db.get(Report, report_id)
+    if not item:
+        raise HTTPException(404)
+    plugin = item.plugin
+    _remove_report(db, item)
+    db.commit()
+    return RedirectResponse(_reports_after_delete(plugin, 1), status_code=303)
+
+
+@app.get("/reports/{report_id}/embed", response_class=HTMLResponse)
+def report_embed(report_id: int, db: Session = Depends(get_db)):
+    item = db.get(Report, report_id)
+    if not item or not is_resource_plugin(item.plugin):
+        raise HTTPException(404)
+    if item.html_path and Path(item.html_path).exists():
+        return HTMLResponse(Path(item.html_path).read_text(encoding="utf-8"))
+    raise HTTPException(404)
 
 
 @app.get("/reports/{report_id}", response_class=HTMLResponse)

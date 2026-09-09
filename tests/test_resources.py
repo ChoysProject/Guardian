@@ -1,5 +1,6 @@
 import io
 import json
+import re
 import tempfile
 import zipfile
 from datetime import datetime, timedelta
@@ -10,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.ai.gateway import _parse_review, review_resources
 from app.main import app
-from app.models import SessionLocal, Server
+from app.models import Report, SessionLocal, Server
 from app.plugins import editor as plugin_editor
 from app.resource_collect import plugin_for_server
 from app.secrets_store import decrypt
@@ -51,6 +52,45 @@ def test_parse_snapshot_variants():
     assert names["mq"] is False
 
 
+def test_parse_instance_start_and_problem():
+    rows = parse_payload(
+        json.dumps(
+            {
+                "server": "eai-01",
+                "date": "2026-09-08",
+                "cpu": {"usage_pct": 1},
+                "mem": {"used_pct": 2},
+                "disk": [],
+                "instances": [
+                    {
+                        "name": "was",
+                        "ok": True,
+                        "started_at": "2026-09-08 09:00:00",
+                        "uptime_sec": 3600,
+                        "restarts": 1,
+                        "problem": "",
+                    },
+                    {"name": "mq", "ok": False, "problem": "failed"},
+                ],
+                "extra": {
+                    "net_connections": {
+                        "established": 12,
+                        "time_wait": 3,
+                        "close_wait": 0,
+                        "peers": [{"state": "ESTAB", "local": "10.0.0.1:8080", "remote": "10.0.0.5:443", "count": 2}],
+                    }
+                },
+            }
+        )
+    )
+    by_name = {item["name"]: item for item in rows[0]["instances"]}
+    assert by_name["was"]["started_at"] == "2026-09-08 09:00:00"
+    assert by_name["was"]["uptime_sec"] == 3600
+    assert by_name["mq"]["problem"] == "failed"
+    assert rows[0]["extra"]["net_connections"]["time_wait"] == 3
+    assert rows[0]["extra"]["net_connections"]["peers"][0]["remote"] == "10.0.0.5:443"
+
+
 def test_parse_payload_repairs_empty_json_values():
     rows = parse_payload(
         '{"server":"eai-01","date":"2026-09-07","cpu":{"usage_pct":1},"mem":{"used_pct":2},"disk":[],'
@@ -59,6 +99,16 @@ def test_parse_payload_repairs_empty_json_values():
     extra = rows[0]["extra"]
     assert extra["sec_failed_login"]["count"] is None
     assert extra["ok"]["hits"] == 3
+
+
+def test_parse_payload_repairs_df_dash_inode():
+    rows = parse_payload(
+        '{"server":"wsl-01","date":"2026-09-08","cpu":{"usage_pct":1},"mem":{"used_pct":2},"disk":[],'
+        '"extra":{"disk_inode":[{"mount":"/mnt/c","inode_pct": -},{"mount":"/","inode_pct":4}]}}'
+    )
+    inodes = rows[0]["extra"]["disk_inode"]
+    assert inodes[0]["inode_pct"] is None
+    assert inodes[1]["inode_pct"] == 4
 
 
 def _rich_snapshot(server: str, day: str, age: int) -> dict:
@@ -200,6 +250,31 @@ def test_report_hides_noise_mounts_and_reads_like_a_status_page():
     assert "/snap" not in report["markdown"]
 
 
+def test_report_shows_swap_like_top_memory():
+    rows = parse_payload(
+        json.dumps(
+            {
+                "server": "mem-01",
+                "date": "2026-09-08",
+                "cpu": {"usage_pct": 5},
+                "mem": {"used_pct": 40, "used_mb": 3200, "total_mb": 8000},
+                "disk": [{"mount": "/", "used_pct": 20, "total_gb": 50, "free_gb": 40}],
+                "instances": [{"name": "was", "ok": True}],
+                "extra": {"mem_swap": {"used_pct": 12, "used_mb": 240, "total_mb": 2000}, "mem_oom": {"hits": 1}},
+            }
+        )
+    )
+    assert rows[0]["mem"]["swap_used_pct"] == 12.0
+    save_snapshot(rows[0])
+    analysis = analyze_server("mem-01", days=1, end="2026-09-08")
+    assert analysis["mem"]["swap_last"] == 12.0
+    report = render_resource_report(analysis, start="2026-09-08", end="2026-09-08")
+    assert "스왑" in report["html"]
+    assert "240MB" in report["html"] or "240" in report["html"]
+    assert "OOM" in report["html"]
+    assert "인스턴스" in report["html"]
+
+
 def test_ai_review_disabled_and_parsing():
     assert review_resources({"server": "x"}) == {}
     parsed = _parse_review('```json\n{"summary": "요약", "risks": ["a", "b"], "actions": []}\n```')
@@ -289,6 +364,8 @@ def test_resource_server_register_edit_delete():
         failed = client.post(f"/servers/resources/{server_id}/collect", follow_redirects=True)
         assert failed.status_code == 200
         assert "수집 실패" in failed.text
+        assert 'id="guardian-flash"' in failed.text
+        assert "alert-danger" not in failed.text
         assert 'id="server-add"' in failed.text
         assert 'id="server-add" class="collapse show"' not in failed.text
         with SessionLocal() as db:
@@ -300,6 +377,7 @@ def test_resource_server_register_edit_delete():
         edited = client.get(f"/servers/resources/{server_id}/edit")
         assert "마지막 수집 오류" in edited.text
         assert "오류 지우기" in edited.text
+        assert "js-copy" in edited.text
 
         # 남은 오류는 버튼으로 지운다 (back 필드 없이도 수정 화면으로 돌아간다)
         cleared = client.post(f"/servers/resources/{server_id}/clear-error", follow_redirects=True)
@@ -324,6 +402,8 @@ def test_resource_plugin_menu():
         assert "cpu_usage" in page.text
         assert "mem_usage" in page.text
         assert "인스턴스 검색" in page.text
+        assert "placeholder=\"프로세스 이름\"" in page.text
+        assert "qry-api" not in page.text
         assert "금지 명령어" not in page.text
         assert "모든 서버" not in page.text
         empty = client.get("/plugins/resource-plugins")
@@ -338,7 +418,7 @@ def test_resource_plugin_menu():
             "/plugins/new",
             data={
                 "stage": "4",
-                "name": "eai_resource",
+                "name": "tmp_eai_resource",
                 "description": "EAI 전용 수집",
                 "all_servers": "1",
                 "script": 'echo \'{"cpu": {"usage_pct": 1}}\'',
@@ -346,13 +426,13 @@ def test_resource_plugin_menu():
             follow_redirects=True,
         )
         assert made.status_code == 200
-        assert "eai_resource" in made.text
+        assert "tmp_eai_resource" in made.text
         try:
-            edit = client.get("/plugins/4/eai_resource")
+            edit = client.get("/plugins/4/tmp_eai_resource")
             assert edit.status_code == 200
             assert "usage_pct" in edit.text
         finally:
-            plugin_editor.delete_plugin(4, "eai_resource")
+            plugin_editor.delete_plugin(4, "tmp_eai_resource")
 
 
 def test_resource_upload_and_weekly_report(monkeypatch):
@@ -396,7 +476,7 @@ def test_resource_upload_and_weekly_report(monkeypatch):
                 follow_redirects=True,
             )
             assert posted.status_code == 200
-            assert "넣었습니다" in posted.text
+            assert '"saved": 1' in posted.text
 
         listed = client.get("/servers/resources")
         assert "demo-local" in listed.text
@@ -408,16 +488,45 @@ def test_resource_upload_and_weekly_report(monkeypatch):
 
         reports = client.get("/reports/resources")
         assert reports.status_code == 200
+        assert 'id="reportFidget"' in reports.text
+        assert "js-report-generate" in reports.text
+        assert "guardian-report-fidget.js" in reports.text
         generated = client.post(
             "/reports/resources/generate",
             data={"selecting": "1", "servers": "demo-local"},
             follow_redirects=True,
         )
         assert generated.status_code == 200
-        assert "resource_report:demo-local" in generated.text
+        assert "demo-local" in generated.text
         assert "리소스 추이" in generated.text
         assert "report-summary" in generated.text
         assert "report-actions" in generated.text
+        assert "server-report-grid" in generated.text
+        assert "resourceReportModal" in generated.text
+        assert "resourceReportList" in generated.text
+        assert "resourceDeleteModal" in generated.text
+        assert "js-report-delete" in generated.text
+        assert "guardian-ui.js" in generated.text
+        assert "data-reports=" in generated.text
+        assert "CPU" in generated.text
+        assert "다시 만들기" in generated.text
+        assert "추이 보고서 생성" not in generated.text
+        with SessionLocal() as db:
+            stored = db.query(Report).filter(Report.plugin == "resource_report:demo-local").first()
+        assert stored is not None
+        embedded = client.get(f"/reports/{stored.id}/embed")
+        assert embedded.status_code == 200
+        assert "demo-local 상태" in embedded.text or "CPU" in embedded.text
+
+        removed = client.post(
+            "/reports/delete",
+            data={"report_ids": stored.id},
+            follow_redirects=False,
+        )
+        assert removed.status_code == 303
+        assert "toast=deleted" in removed.headers.get("location", "")
+        with SessionLocal() as db:
+            assert db.get(Report, stored.id) is None
 
         log_reports = client.get("/reports")
         assert "resource_report:demo-local" not in log_reports.text
@@ -572,6 +681,9 @@ def test_resource_server_list_has_no_instances():
         assert "인스턴스 추가" not in page.text
         assert "instancesModal" not in page.text
         assert ">인스턴스<" not in page.text
+        assert "화면에서 구분할 이름" in page.text
+        assert "접속할 IP 또는 호스트명" in page.text
+        assert "eai-01" not in page.text
 
 
 def test_script_writes_json_under_plugin_folder():
@@ -584,6 +696,7 @@ def test_script_writes_json_under_plugin_folder():
     assert "chmod" not in script
     assert "chown" not in script
     assert "RESULT_BUF" in script
+    assert "printf '%s' \"$RESULT_BUF\"" in script
     assert 'PLUGIN_NAME="local_collect"' in script
     assert 'OUT_DIR="__GUARDIAN_COLLECT_PATH__"' in script
     assert 'mkdir -p "$OUT_DIR"' in script
@@ -591,6 +704,14 @@ def test_script_writes_json_under_plugin_folder():
     assert 'OUT_DIR="$SCRIPT_DIR/DailyData"' in script
     assert "JSON 한 줄은 무조건 찍는다" in script or "무조건" in script
     assert "check_cpu_usage" in script
+    assert "hostname -s" in script
+    assert "json.dumps" in script
+    assert "python3" in script
+    assert "json_join" in script
+    assert "{{server}}" in script
+    assert "BASH_VERSION" in script
+    assert "export LC_ALL=C" in script
+    assert "sed -i" in script
 
 
 def test_build_script_from_modules_and_instances():
@@ -598,7 +719,15 @@ def test_build_script_from_modules_and_instances():
     assert "check_cpu_usage" in script
     assert "check_mem_usage" in script
     assert "check_instance_search" in script
+    assert "probe_service" in script
+    assert "started_at" in script
+    script_net, _ = build_script(["net_connections"])
+    assert "check_net_connections" in script_net
+    assert "time_wait" in script_net
+    assert "peers" in script_net
     assert "SEARCH_NAMES=\"qry-api\"" in script
+    assert '[ "$SEARCH_NAMES" = "{{searches}}" ]' in script
+    assert '[ "$SEARCH_NAMES" = "qry-api" ]' not in script
     assert "grep -F -- \"$name\"" in script
     assert "HEADER" in script or "have_cmd()" in script
     assert "add_result" in script
@@ -711,4 +840,5 @@ def test_seeded_weekly_report():
             follow_redirects=True,
         )
         assert generated.status_code == 200
-        assert "resource_report:demo-web" in generated.text
+        assert "demo-web" in generated.text
+        assert "server-report-card" in generated.text

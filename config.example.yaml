@@ -7,7 +7,7 @@ app:
   port: 8080
   data_dir: data
   timezone: Asia/Seoul
-  seed_demo: true          # 최초 기동 시 로컬 데모 서버·샘플 로그 등록
+  seed_demo: false         # true면 기동 시 데모 서버·샘플 로그를 넣습니다. 반입본은 false
 
 database:
   # 개인 PC: sqlite. 공용 서버: postgresql+psycopg://user:pass@host/guardian
@@ -27,20 +27,19 @@ collect:
   persist_raw_events: false     # true면 원본 라인을 DB에 저장. 기본은 Finding만
 
 openai:
-  enabled: true                 # 반입 전 테스트. 폐쇄망에서는 false 로 두고 dify.enabled 를 true
-  api_key: ""                   # 또는 환경변수 OPENAI_API_KEY
+  enabled: false                # 폐쇄망 반입본은 끕니다
+  api_key: ""
   model: gpt-4o-mini
   base_url: https://api.openai.com/v1
   timeout_seconds: 30
 
 dify:
-  enabled: false
-  base_url: http://dify.internal/v1
+  enabled: true                 # 반입 후 아래 base_url 의 IP만 바꾸면 됩니다
+  base_url: http://127.0.0.1/v1 # ← 내부 Dify IP(또는 호스트)만 수정
   api_key: ""
   workflow_id: ""
   user: guardian
   timeout_seconds: 30
-  # 워크플로 입력 변수 이름. Dify 쪽에서 이 키로 JSON 문자열을 받도록 맞춥니다.
   input_key: findings_json
 
 scheduler:

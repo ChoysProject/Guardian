@@ -304,7 +304,7 @@
           "<td>" +
           esc(item.date) +
           "</td><td class=\"text-end\">" +
-          '<form method="post" action="/servers/resources/delete" onsubmit="return confirm(\'이 날짜 자료를 지울까요?\');">' +
+          '<form method="post" action="/servers/resources/delete" data-confirm-title="자료 삭제" data-confirm="이 날짜 자료를 지울까요?" data-confirm-ok="삭제">' +
           '<input type="hidden" name="server" value="' +
           esc(server) +
           '"><input type="hidden" name="date" value="' +
@@ -440,7 +440,9 @@
     uploadForm.addEventListener("submit", function (event) {
       if (!applyFilesToInput()) {
         event.preventDefault();
-        alert("올릴 JSON 파일을 선택하세요.");
+        if (window.GuardianUI) {
+          window.GuardianUI.toast("올릴 JSON 파일을 선택하세요.", "warning");
+        }
       }
     });
   }

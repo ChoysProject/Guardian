@@ -2,9 +2,6 @@
 {% set title = "리소스 및 성능 수집 대상 서버" %}
 {% set heading = "리소스 및 성능 수집 대상 서버" %}
 {% block content %}
-{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
-{% if saved %}<div class="alert alert-success">{{ saved }}건을 넣었습니다.</div>{% endif %}
-{% if notice %}<div class="alert alert-success">{{ notice }}</div>{% endif %}
 
 <div class="card mb-4" id="collecting">
   <div class="card-header d-flex align-items-center justify-content-between gap-3">
@@ -32,11 +29,11 @@
         <div class="row gx-3">
           <div class="col-md-4 mb-3">
             <label class="small mb-1" for="name">이름</label>
-            <input class="form-control" id="name" name="name" required placeholder="eai-01">
+            <input class="form-control" id="name" name="name" required placeholder="화면에서 구분할 이름">
           </div>
           <div class="col-md-4 mb-3">
             <label class="small mb-1" for="host">호스트 (IP)</label>
-            <input class="form-control" id="host" name="host" placeholder="10.0.0.12">
+            <input class="form-control" id="host" name="host" placeholder="접속할 IP 또는 호스트명">
           </div>
           <div class="col-md-2 mb-3">
             <label class="small mb-1" for="port">포트</label>
@@ -51,7 +48,7 @@
           </div>
           <div class="col-md-4 mb-3">
             <label class="small mb-1" for="username">계정</label>
-            <input class="form-control" id="username" name="username" placeholder="guardian">
+            <input class="form-control" id="username" name="username" placeholder="SSH 로그인 계정">
           </div>
           <div class="col-md-4 mb-3">
             <label class="small mb-1" for="auth_type">인증 방식</label>
@@ -63,7 +60,7 @@
           </div>
           <div class="col-md-4 mb-3 auth-password d-none">
             <label class="small mb-1" for="password">비밀번호</label>
-            <input class="form-control" id="password" name="password" type="password" autocomplete="new-password">
+            <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" placeholder="SSH 비밀번호">
             <div class="form-text">암호화해서 보관하며 화면에는 다시 보이지 않습니다.</div>
           </div>
           <div class="col-md-4 mb-3 auth-key">
@@ -73,7 +70,7 @@
           </div>
           <div class="col-md-4 mb-3 auth-key">
             <label class="small mb-1" for="key_path">또는 서버에 있는 키 경로</label>
-            <input class="form-control" id="key_path" name="key_path" placeholder="C:\Users\me\.ssh\id_ed25519">
+            <input class="form-control" id="key_path" name="key_path" placeholder="개인키 파일의 전체 경로">
           </div>
           <div class="col-12 mb-3">
             <label class="small mb-1" for="plugins">수집 스크립트</label>
@@ -87,15 +84,14 @@
           </div>
           <div class="col-md-6 mb-3">
             <label class="small mb-1" for="collect_path">수집 경로</label>
-            <input class="form-control" id="collect_path" name="collect_path" placeholder="/mnt/c/Users/이름/Desktop/Test_guardian/스크립트이름">
+            <input class="form-control" id="collect_path" name="collect_path" placeholder="스크립트 폴더 또는 DailyData 의 리눅스/WSL 경로">
             <div class="form-text">
-              스크립트 폴더 또는 <code>DailyData</code> 의 리눅스/WSL 경로입니다. 비우면 스크립트 옆 <code>DailyData/</code> 에 쌓입니다.
-              예: zip을 <code>Test_guardian</code> 에 풀면 <code>/mnt/c/Users/ChoYoungSang/Desktop/Test_guardian/cys</code>
+              스크립트가 있는 폴더, 또는 그 안의 <code>DailyData</code> 경로입니다. 비우면 스크립트 옆 <code>DailyData/</code> 에 쌓입니다.
             </div>
           </div>
           <div class="col-md-6 mb-3">
             <label class="small mb-1" for="note">비고</label>
-            <input class="form-control" id="note" name="note" placeholder="업무 시간 외 재기동 금지 등">
+            <input class="form-control" id="note" name="note" placeholder="운영 시 참고할 메모">
           </div>
         </div>
         <button class="btn btn-primary" type="submit">등록</button>

@@ -3,7 +3,6 @@
 {% set heading = title %}
 {% block content %}
 {% if kind == "resources" %}
-{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 <div class="card mb-4">
   <div class="card-header d-flex align-items-center justify-content-between">
     <span>수집 스크립트</span>
@@ -19,11 +18,11 @@
         <div class="row gx-3">
           <div class="col-md-4 mb-3">
             <label class="small mb-1" for="name">이름 (영문/숫자/_-)</label>
-            <input class="form-control" id="name" name="name" required value="{{ form_name }}" placeholder="eai_resource">
+            <input class="form-control" id="name" name="name" required value="{{ form_name }}" placeholder="영문·숫자·밑줄만 쓰는 식별 이름">
           </div>
           <div class="col-md-8 mb-3">
             <label class="small mb-1" for="description">설명</label>
-            <input class="form-control" id="description" name="description" value="{{ form_description }}" placeholder="EAI 서버 수집">
+            <input class="form-control" id="description" name="description" value="{{ form_description }}" placeholder="이 스크립트가 무엇을 모으는지">
           </div>
         </div>
         {% include "_resource_modules.html" %}

@@ -49,19 +49,19 @@
 {% endfor %}
 <div class="mb-3">
   <label class="small mb-1">인스턴스 검색</label>
-  <div class="form-text mb-2">이름을 넣으면 <code>ps</code>/<code>grep</code> 으로 그 프로세스 정보를 모으는 스크립트가 추가됩니다. 예: qry-api</div>
+  <div class="form-text mb-2"><code>ps</code>/<code>grep</code> 으로 찾을 프로세스 이름을 넣으면 그 프로세스 정보를 모으는 스크립트가 추가됩니다.</div>
   <div id="plugin-instance-list" class="row gx-2">
     {% for inst in plugin_instances|default([]) %}
     <div class="col-md-4 mb-2 plugin-instance-item">
       <div class="input-group input-group-sm">
-        <input class="form-control plugin-instance-name" name="plugin_instances" value="{{ inst }}" placeholder="qry-api">
+        <input class="form-control plugin-instance-name" name="plugin_instances" value="{{ inst }}" placeholder="프로세스 이름">
         <button class="btn btn-outline-secondary plugin-instance-remove" type="button" aria-label="빼기">−</button>
       </div>
     </div>
     {% else %}
     <div class="col-md-4 mb-2 plugin-instance-item">
       <div class="input-group input-group-sm">
-        <input class="form-control plugin-instance-name" name="plugin_instances" placeholder="qry-api">
+        <input class="form-control plugin-instance-name" name="plugin_instances" placeholder="프로세스 이름">
         <button class="btn btn-outline-secondary plugin-instance-remove" type="button" aria-label="빼기">−</button>
       </div>
     </div>

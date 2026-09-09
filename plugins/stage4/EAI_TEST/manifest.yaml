@@ -1,9 +1,9 @@
-name: cys
+name: EAI_TEST
 stage: 4
 version: '1.0'
 type: resource_script
 enabled: true
-description: cys 리소스 수집
+description: EAI_TEST 리소스 수집
 targets:
 - '*'
 config:
@@ -11,22 +11,31 @@ config:
   - cpu_usage
   - cpu_load
   - cpu_core_count
+  - cpu_steal
   - cpu_ctxswitch
   - mem_usage
   - mem_available
   - mem_swap
+  - mem_oom
   - disk_usage
+  - disk_inode
   - disk_iowait
   - disk_iops
   - disk_dir_size
+  - net_traffic
   - net_connections
+  - net_errors
+  - net_listen_ports
   - proc_top_cpu
+  - proc_top_mem
   - proc_zombie
   - proc_service_alive
+  - proc_fd_usage
   - os_info
   - os_uptime
+  - os_cloud_meta
+  - os_ntp_sync
   - sec_failed_login
+  - sec_crontab_check
   instances:
-  - kakaotalk
-  - docker
-  - cursor
+  - urm

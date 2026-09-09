@@ -2,15 +2,6 @@
 {% set title = server.name %}
 {% set heading = server.name + " 수정" %}
 {% block content %}
-{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
-{% if notice %}<div class="alert alert-success">{{ notice }}</div>{% endif %}
-{% if tested %}
-<div class="alert alert-success">
-  <div class="fw-semibold mb-1">접속 확인 결과</div>
-  <pre class="mb-0 small">{{ tested }}</pre>
-</div>
-{% endif %}
-
 <div class="card mb-4">
   <div class="card-header d-flex align-items-center justify-content-between">
     <span>접속 정보</span>
@@ -28,7 +19,7 @@
       <div class="row gx-3">
         <div class="col-md-4 mb-3">
           <label class="small mb-1" for="host">호스트 (IP)</label>
-          <input class="form-control" id="host" name="host" value="{{ server.host }}">
+          <input class="form-control" id="host" name="host" value="{{ server.host }}" placeholder="접속할 IP 또는 호스트명">
         </div>
         <div class="col-md-2 mb-3">
           <label class="small mb-1" for="port">포트</label>
@@ -36,7 +27,7 @@
         </div>
         <div class="col-md-3 mb-3">
           <label class="small mb-1" for="username">계정</label>
-          <input class="form-control" id="username" name="username" value="{{ server.username }}">
+          <input class="form-control" id="username" name="username" value="{{ server.username }}" placeholder="SSH 로그인 계정">
         </div>
         <div class="col-md-3 mb-3">
           <label class="small mb-1" for="collector_type">수집기</label>
@@ -55,7 +46,7 @@
         </div>
         <div class="col-md-4 mb-3 auth-password {% if server.auth_type != 'password' %}d-none{% endif %}">
           <label class="small mb-1" for="password">비밀번호</label>
-          <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" placeholder="{% if server.password_enc %}저장돼 있음 · 바꿀 때만 입력{% else %}비밀번호{% endif %}">
+          <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" placeholder="{% if server.password_enc %}저장돼 있음 · 바꿀 때만 입력{% else %}SSH 비밀번호{% endif %}">
         </div>
         <div class="col-md-4 mb-3 auth-key {% if server.auth_type != 'key' %}d-none{% endif %}">
           <label class="small mb-1" for="key_file">개인키 파일 바꾸기</label>
@@ -64,15 +55,15 @@
         </div>
         <div class="col-md-4 mb-3 auth-key {% if server.auth_type != 'key' %}d-none{% endif %}">
           <label class="small mb-1" for="key_path">또는 키 경로</label>
-          <input class="form-control" id="key_path" name="key_path" value="{{ server.key_path }}">
+          <input class="form-control" id="key_path" name="key_path" value="{{ server.key_path }}" placeholder="개인키 파일의 전체 경로">
         </div>
         <div class="col-md-6 mb-3">
           <label class="small mb-1" for="note">비고</label>
-          <input class="form-control" id="note" name="note" value="{{ server.note }}">
+          <input class="form-control" id="note" name="note" value="{{ server.note }}" placeholder="운영 시 참고할 메모">
         </div>
         <div class="col-md-6 mb-3">
           <label class="small mb-1" for="collect_path">수집 경로</label>
-          <input class="form-control" id="collect_path" name="collect_path" value="{{ server.collect_path }}" placeholder="/mnt/c/Users/이름/Desktop/Test_guardian/스크립트이름">
+          <input class="form-control" id="collect_path" name="collect_path" value="{{ server.collect_path }}" placeholder="스크립트 폴더 또는 DailyData 의 리눅스/WSL 경로">
           <div class="form-text">
             스크립트 폴더 또는 <code>DailyData</code> 의 리눅스/WSL 경로입니다. 비우면 스크립트 옆 <code>DailyData/</code> 에 쌓입니다.
             저장한 뒤 "다시 가져오기"를 누르면 이 경로와 DailyData 안의 JSON을 전부 읽어 옵니다.
@@ -110,10 +101,24 @@
   {% if server.last_resource_error %}
   <div class="card-body border-bottom py-2">
     <div class="d-flex align-items-start justify-content-between small text-danger">
-      <span>마지막 수집 오류: {{ server.last_resource_error }}</span>
-      <form method="post" action="/servers/resources/{{ server.id }}/clear-error" class="mb-0 ms-3">
-        <button class="btn btn-sm btn-outline-danger" type="submit">오류 지우기</button>
-      </form>
+      <span class="me-2">마지막 수집 오류: {{ server.last_resource_error }}</span>
+      <div class="d-flex align-items-center gap-1 flex-shrink-0">
+        <button
+          class="js-copy guardian-copy-btn"
+          type="button"
+          data-copy="{{ server.last_resource_error }}"
+          title="복사"
+          aria-label="복사"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+            <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+          </svg>
+        </button>
+        <form method="post" action="/servers/resources/{{ server.id }}/clear-error" class="mb-0">
+          <button class="btn btn-sm btn-outline-danger" type="submit">오류 지우기</button>
+        </form>
+      </div>
     </div>
   </div>
   {% endif %}
@@ -129,7 +134,7 @@
         <span class="badge bg-danger-soft text-danger ms-2">장애 {{ fails | length }}개</span>
         {% endif %}
       </div>
-      <form method="post" action="/servers/resources/delete" class="mb-0" onsubmit="return confirm('{{ item.date }} 자료를 지울까요?');">
+      <form method="post" action="/servers/resources/delete" class="mb-0" data-confirm-title="자료 삭제" data-confirm="{{ item.date }} 자료를 지울까요?" data-confirm-ok="삭제">
         <input type="hidden" name="server" value="{{ server.name }}">
         <input type="hidden" name="date" value="{{ item.date }}">
         <button class="btn btn-sm btn-outline-secondary" type="submit">삭제</button>
@@ -142,13 +147,13 @@
 </div>
 
 <div class="card mb-4 border-danger-subtle">
-  <div class="card-header">서버 빼기</div>
+  <div class="card-header">수집 서버 제거</div>
   <div class="card-body d-flex align-items-center justify-content-between">
     <div class="small text-muted">
-      {% if server.collect_logs %}로그 수집도 하는 서버라 리소스 대상에서만 뺍니다.{% else %}등록 정보와 올린 키를 지웁니다. 쌓인 리소스 자료는 남습니다.{% endif %}
+      {% if server.collect_logs %}로그 수집도 하는 서버라 리소스 수집 대상에서만 제거합니다.{% else %}등록 정보와 올린 키를 지웁니다. 쌓인 리소스 자료는 남습니다.{% endif %}
     </div>
-    <form method="post" action="/servers/resources/{{ server.id }}/delete" onsubmit="return confirm('이 서버를 뺄까요?');">
-      <button class="btn btn-sm btn-outline-danger" type="submit">빼기</button>
+    <form method="post" action="/servers/resources/{{ server.id }}/delete" data-confirm-title="수집 서버 제거" data-confirm="이 수집 서버를 제거할까요?" data-confirm-ok="제거">
+      <button class="btn btn-sm btn-outline-danger" type="submit">제거</button>
     </form>
   </div>
 </div>

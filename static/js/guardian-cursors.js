@@ -12,7 +12,9 @@
       var resources = document.getElementById("analyze_resources");
       if (!logsBox.checked && !(resources && resources.checked)) {
         event.preventDefault();
-        alert("로그 분석 또는 리소스 분석 중 하나는 선택해야 합니다.");
+        if (window.GuardianUI) {
+          window.GuardianUI.toast("로그 분석 또는 리소스 분석 중 하나는 선택해야 합니다.", "warning");
+        }
       }
     });
   }
@@ -24,7 +26,7 @@
       : "input-group input-group-sm mb-2 instance-item";
     item.innerHTML =
       (wrap ? '<div class="input-group input-group-sm">' : "") +
-      '<input class="form-control" name="instances" placeholder="postgres">' +
+      '<input class="form-control" name="instances" placeholder="프로세스 이름">' +
       '<button class="btn btn-outline-secondary instance-remove" type="button" aria-label="빼기">−</button>' +
       (wrap ? "</div>" : "");
     item.querySelector("input").value = value || "";

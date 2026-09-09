@@ -112,7 +112,7 @@
       row.className = "col-md-4 mb-2 plugin-instance-item";
       row.innerHTML =
         '<div class="input-group input-group-sm">' +
-        '<input class="form-control plugin-instance-name" name="plugin_instances" placeholder="qry-api">' +
+        '<input class="form-control plugin-instance-name" name="plugin_instances" placeholder="프로세스 이름">' +
         '<button class="btn btn-outline-secondary plugin-instance-remove" type="button" aria-label="빼기">−</button>' +
         "</div>";
       bindRow(row);

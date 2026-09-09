@@ -16,7 +16,7 @@
           <h1 class="page-header-title">
             감시 현황
           </h1>
-          <div class="page-header-subtitle">서버 로그 이상징후와 일일 보고서</div>
+          <div class="page-header-subtitle">로그 이상징후와 서버 리소스 상태</div>
         </div>
         <div class="col-12 col-xl-auto mt-4">
           <form method="post" action="/collect">
@@ -36,8 +36,8 @@
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center">
           <div class="me-3">
-            <div class="text-white-75 small">서버</div>
-            <div class="text-lg fw-bold">{{ counts.servers }}</div>
+            <div class="text-white-75 small">리소스 서버</div>
+            <div class="text-lg fw-bold">{{ counts.resource_servers }}</div>
           </div>
           <i class="feather-xl text-white-50" data-feather="server"></i>
         </div>
@@ -87,8 +87,8 @@
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center">
           <div class="me-3">
-            <div class="text-white-75 small">보고서</div>
-            <div class="text-lg fw-bold">{{ counts.reports }}</div>
+            <div class="text-white-75 small">리소스 보고서</div>
+            <div class="text-lg fw-bold">{{ counts.resource_reports }}</div>
           </div>
           <i class="feather-xl text-white-50" data-feather="file-text"></i>
         </div>
@@ -98,6 +98,20 @@
         <div class="text-white"><i data-feather="arrow-right"></i></div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>리소스 및 성능</span>
+    <a class="small" href="/reports/resources">보고서 화면</a>
+  </div>
+  <div class="card-body">
+    {% if counts.resource_attention %}
+    <p class="small text-warning mb-3">주의가 필요한 서버 {{ counts.resource_attention }}대</p>
+    {% endif %}
+    {% set show_actions = false %}
+    {% include "_resource_server_cards.html" %}
   </div>
 </div>
 
@@ -245,4 +259,5 @@
 {% block scripts %}
 <script src="/static/vendor/Chart.min.js"></script>
 <script src="/static/js/guardian-charts.js"></script>
+<script src="/static/js/guardian-resource-reports.js?v=ui-modal-1"></script>
 {% endblock %}

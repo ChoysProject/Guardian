@@ -7,7 +7,7 @@
   <div class="card-body">
     <div class="text-muted small mb-2">{{ report.plugin }} · {{ report.period_start }} ~ {{ report.period_end }}</div>
     <p class="mb-3">{{ report.summary }}</p>
-    <form method="post" action="/reports/{{ report.id }}/delete" onsubmit="return confirm('이 보고서를 삭제할까요?');">
+    <form method="post" action="/reports/{{ report.id }}/delete" data-confirm-title="보고서 삭제" data-confirm="이 보고서를 삭제할까요?" data-confirm-ok="삭제">
       <button class="btn btn-sm btn-outline-danger" type="submit">보고서 삭제</button>
     </form>
   </div>
