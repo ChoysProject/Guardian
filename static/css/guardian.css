@@ -66,6 +66,19 @@ body {
   border-radius: 0.35rem;
   background: #fff;
 }
+#resourceReportModal .modal-header {
+  gap: 0.5rem;
+  overflow: visible;
+}
+.resource-report-export {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.resource-report-export .dropdown-menu {
+  z-index: 1080;
+}
 .chart-area {
   position: relative;
   height: 18rem;

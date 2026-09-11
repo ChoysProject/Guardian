@@ -173,6 +173,35 @@ def test_rich_snapshot_analysis():
     assert "로그 정리" in report["html"]
     assert "11일 뒤 가득 참" in report["markdown"]
     assert "14시" in report["markdown"]
+    assert "class='ai-review'" in report["html"] or 'class="ai-review"' in report["html"]
+
+
+def test_ai_summary_markdown_becomes_html_blocks():
+    rows = parse_payload(
+        json.dumps(
+            {
+                "server": "ai-fmt-01",
+                "date": "2026-09-08",
+                "cpu": {"usage_pct": 0.8},
+                "mem": {"used_pct": 30.4},
+                "disk": [{"mount": "/", "used_pct": 34, "total_gb": 71, "free_gb": 47}],
+            }
+        )
+    )
+    save_snapshot(rows[0])
+    analysis = analyze_server("ai-fmt-01", days=1, end="2026-09-08")
+    report = render_resource_report(
+        analysis,
+        start="2026-09-08",
+        end="2026-09-08",
+        ai={
+            "summary": "Certainly. ### CPU 사용률 **0.8%** ### 메모리 **30.4%**",
+        },
+    )
+    assert "<h4>" in report["html"]
+    assert "<strong>0.8%</strong>" in report["html"]
+    assert "###" not in report["html"]
+    assert "Certainly" not in report["html"]
 
 
 def test_resource_report_includes_json_extras():
@@ -282,6 +311,10 @@ def test_ai_review_disabled_and_parsing():
     assert parsed["risks"] == ["a", "b"]
     assert parsed["actions"] == []
     assert _parse_review("그냥 문장")["summary"] == "그냥 문장"
+    markdown = _parse_review("Certainly. ### CPU 사용률 **75%** ### 메모리 **82%**")
+    assert "### CPU" in markdown["summary"]
+    assert "\n" in markdown["summary"]
+    assert not markdown["summary"].lower().startswith("certainly")
 
 
 def test_resource_report_keeps_going_when_ai_fails(monkeypatch):
@@ -504,6 +537,11 @@ def test_resource_upload_and_weekly_report(monkeypatch):
         assert "server-report-grid" in generated.text
         assert "resourceReportModal" in generated.text
         assert "resourceReportList" in generated.text
+        assert "resourceReportExport" in generated.text
+        assert "이미지 복사" in generated.text
+        assert "이미지 저장" in generated.text
+        assert "MD 복사" in generated.text
+        assert "MD 저장" in generated.text
         assert "resourceDeleteModal" in generated.text
         assert "js-report-delete" in generated.text
         assert "guardian-ui.js" in generated.text
@@ -517,6 +555,11 @@ def test_resource_upload_and_weekly_report(monkeypatch):
         embedded = client.get(f"/reports/{stored.id}/embed")
         assert embedded.status_code == 200
         assert "demo-local 상태" in embedded.text or "CPU" in embedded.text
+        markdown = client.get(f"/reports/{stored.id}/markdown")
+        assert markdown.status_code == 200
+        assert "text/markdown" in markdown.headers.get("content-type", "")
+        assert "디스크" in markdown.text
+        assert "attachment" in markdown.headers.get("content-disposition", "")
 
         removed = client.post(
             "/reports/delete",
@@ -728,7 +771,9 @@ def test_build_script_from_modules_and_instances():
     assert "SEARCH_NAMES=\"qry-api\"" in script
     assert '[ "$SEARCH_NAMES" = "{{searches}}" ]' in script
     assert '[ "$SEARCH_NAMES" = "qry-api" ]' not in script
-    assert "grep -F -- \"$name\"" in script
+    assert "find_proc_pid" in script
+    assert "pgrep -x --" in script
+    assert "grep -F -- \"$name\"" not in script
     assert "HEADER" in script or "have_cmd()" in script
     assert "add_result" in script
     with TestClient(app) as client:

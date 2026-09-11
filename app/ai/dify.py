@@ -51,8 +51,9 @@ def annotate_findings(findings: list[dict[str, Any]]) -> list[str]:
         return [""] * len(findings)
 
 
-def _call_dify(payload: list[dict[str, Any]]) -> list[str]:
+def _call_dify(payload: list[dict[str, Any]] | dict[str, Any]) -> list[str]:
     url = settings.dify.base_url.rstrip("/") + "/workflows/run"
+    expected = len(payload) if isinstance(payload, list) else 1
     body = {
         "inputs": {settings.dify.input_key: json.dumps(payload, ensure_ascii=False)},
         "response_mode": "blocking",
@@ -68,35 +69,90 @@ def _call_dify(payload: list[dict[str, Any]]) -> list[str]:
         response = client.post(url, json=body, headers=headers)
         response.raise_for_status()
         data = response.json()
-    return _extract_comments(data, expected=len(payload))
+    return _extract_comments(data, expected=expected)
+
+
+PREFERRED_OUTPUT_KEYS = (
+    "comments",
+    "analysis",
+    "text",
+    "answer",
+    "output",
+    "result",
+    "body",
+    "content",
+    "summary",
+)
+
+
+def _review_json(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    if not any(key in value for key in ("summary", "risks", "actions")):
+        return ""
+    body = {key: value[key] for key in ("summary", "risks", "actions") if key in value}
+    if not body:
+        return ""
+    return json.dumps(body, ensure_ascii=False)
+
+
+def _as_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, list):
+        parts = [_as_text(item) for item in value]
+        return "\n".join(part for part in parts if part).strip()
+    if isinstance(value, dict):
+        packed = _review_json(value)
+        if packed:
+            return packed
+        for key in PREFERRED_OUTPUT_KEYS:
+            text = _as_text(value.get(key))
+            if text:
+                return text
+        for key, item in value.items():
+            if key in {"files", "usage", "metadata", "error"}:
+                continue
+            text = _as_text(item)
+            if text:
+                return text
+    return ""
 
 
 def _extract_comments(data: dict[str, Any], expected: int) -> list[str]:
-    outputs = (
-        data.get("data", {}).get("outputs")
-        or data.get("outputs")
-        or {}
-    )
-    raw = (
-        outputs.get("comments")
-        or outputs.get("analysis")
-        or outputs.get("text")
-        or outputs.get("answer")
-        or ""
-    )
-    if isinstance(raw, list):
-        return [str(item) for item in raw]
-    if isinstance(raw, dict):
-        items = raw.get("items") or raw.get("findings") or []
-        if isinstance(items, list):
-            return [str(item.get("comment", item)) for item in items]
-    text = str(raw).strip()
+    inner = data.get("data") if isinstance(data.get("data"), dict) else {}
+    status = inner.get("status") or data.get("status") or ""
+    if status and str(status).lower() not in {"succeeded", "success", "ok", ""}:
+        logger.warning("Dify 상태가 성공이 아닙니다: %s %s", status, inner.get("error") or "")
+    outputs = inner.get("outputs") or data.get("outputs") or {}
+    text = ""
+    if isinstance(outputs, dict):
+        for key in PREFERRED_OUTPUT_KEYS:
+            text = _as_text(outputs.get(key))
+            if text:
+                break
+        if not text:
+            text = _as_text(outputs)
+    else:
+        text = _as_text(outputs)
     if not text:
+        keys = list(outputs) if isinstance(outputs, dict) else type(outputs).__name__
+        logger.warning("Dify 출력을 읽지 못했습니다. outputs 키: %s", keys)
         return [""] * expected
-    try:
-        parsed = json.loads(text)
-        if isinstance(parsed, list):
-            return [str(item) for item in parsed]
-    except json.JSONDecodeError:
-        pass
+    packed = _review_json(outputs) if isinstance(outputs, dict) else ""
+    if packed:
+        text = packed
+    if text.startswith("[") or text.startswith("{"):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed]
+            if isinstance(parsed, dict):
+                return [json.dumps(parsed, ensure_ascii=False)]
+        except json.JSONDecodeError:
+            pass
     return [text] + [""] * (expected - 1)

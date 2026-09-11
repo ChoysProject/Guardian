@@ -78,7 +78,23 @@
     <div class="modal-content">
       <div class="modal-header">
         <button class="btn btn-sm btn-outline-secondary me-2 d-none" type="button" id="resourceReportBack">목록</button>
-        <h5 class="modal-title" id="resourceReportTitle">보고서</h5>
+        <h5 class="modal-title flex-grow-1" id="resourceReportTitle">보고서</h5>
+        <div class="resource-report-export d-none" id="resourceReportExport">
+          <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">이미지</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><button class="dropdown-item" type="button" id="resourceReportImageCopy">이미지 복사</button></li>
+              <li><button class="dropdown-item" type="button" id="resourceReportImageSave">이미지 저장</button></li>
+            </ul>
+          </div>
+          <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">MD</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><button class="dropdown-item" type="button" id="resourceReportMdCopy">MD 복사</button></li>
+              <li><button class="dropdown-item" type="button" id="resourceReportMdSave">MD 저장</button></li>
+            </ul>
+          </div>
+        </div>
         <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="닫기"></button>
       </div>
       <div class="modal-body p-0" id="resourceReportListPane">

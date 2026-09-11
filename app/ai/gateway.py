@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -35,10 +36,12 @@ def annotate_findings(findings: list[dict[str, Any]]) -> list[str]:
 
 RESOURCE_SYSTEM = (
     "서버 리소스 추이 요약을 한국어로 해석한다. "
-    "주어진 JSON 통계만 보고, 없는 수치를 지어내지 않는다. "
-    "디스크 소진 예상일, 피크 시간대, 인스턴스 재시작·중단처럼 근거가 있는 것만 짚는다. "
-    '출력은 {"summary": "두세 문장", "risks": ["..."], "actions": ["..."]} 형태의 JSON 객체만 낸다. '
-    "risks 와 actions 는 각각 최대 3개, 한 줄씩 쓴다."
+    "facts 와 stats 에 있는 숫자만 사용한다. 없는 수치와 없는 항목(네트워크 대역폭, 응답시간 등)은 만들지 않는다. "
+    "예시 숫자(75%, 82% 같은 값)를 쓰지 않는다. "
+    "마크다운 보고서(### 제목, **굵게**)와 영어 서두(Certainly 등)를 쓰지 않는다. "
+    '출력은 {"summary": "두세 문장", "risks": ["..."], "actions": ["..."]} JSON 객체만 낸다. '
+    "summary 는 줄바꿈 없이, 실제 수치를 넣은 두세 문장이다. "
+    "risks 와 actions 는 각각 최대 3개. 위험 없으면 빈 배열."
 )
 
 
@@ -50,9 +53,14 @@ def review_resources(payload: dict[str, Any]) -> dict[str, Any]:
         if settings.openai.enabled and settings.openai.api_key:
             return _call_openai_resources(payload)
         if settings.dify.enabled:
-            comments = _call_dify([payload])
+            comments = _call_dify(_dify_review_input(payload))
             text = "\n".join(item for item in comments if item).strip()
-            return {"summary": text} if text else {}
+            if not text:
+                return {}
+            parsed = _parse_review(text)
+            if parsed.get("summary") or parsed.get("risks") or parsed.get("actions"):
+                return parsed
+            return {"summary": text}
         return {}
     except Exception:
         logger.exception("AI 리소스 총평 실패 — 규칙 결과만 유지합니다.")
@@ -86,6 +94,55 @@ def _call_openai_resources(payload: dict[str, Any]) -> dict[str, Any]:
     return _parse_review(text)
 
 
+def _dify_review_input(payload: dict[str, Any]) -> dict[str, Any]:
+    cpu = payload.get("cpu") or {}
+    mem = payload.get("mem") or {}
+    disks = payload.get("disks") or []
+    return {
+        "task": "resource_review",
+        "instruction": RESOURCE_SYSTEM,
+        "facts": {
+            "server": payload.get("server"),
+            "cpu_last_pct": cpu.get("last"),
+            "cpu_avg_pct": cpu.get("avg"),
+            "cpu_max_pct": cpu.get("max"),
+            "mem_last_pct": mem.get("last"),
+            "mem_avg_pct": mem.get("avg"),
+            "disks": [
+                {
+                    "mount": item.get("mount"),
+                    "used_pct": item.get("last"),
+                    "free_gb": item.get("free_gb"),
+                }
+                for item in disks[:8]
+            ],
+            "instances": [
+                {
+                    "name": item.get("name"),
+                    "ok": item.get("ok"),
+                    "problem": item.get("problem"),
+                }
+                for item in (payload.get("instances") or [])[:12]
+            ],
+        },
+        "stats": payload,
+    }
+
+
+def _normalize_ai_text(text: str) -> str:
+    body = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    body = re.sub(
+        r"^(certainly|sure|of course|okay|ok)[^.?!]*[.?!]\s*",
+        "",
+        body,
+        flags=re.I,
+    )
+    if "\n" not in body and ("###" in body or "**" in body):
+        body = re.sub(r"\s*(#{2,4}\s+)", r"\n\n\1", body)
+        body = re.sub(r"\s+-\s+", "\n- ", body)
+    return body.strip()
+
+
 def _parse_review(text: str) -> dict[str, Any]:
     if not text:
         return {}
@@ -93,16 +150,23 @@ def _parse_review(text: str) -> dict[str, Any]:
     if body.startswith("```"):
         body = body.strip("`")
         body = body.split("\n", 1)[-1] if "\n" in body else body
+    parsed: Any = None
     start = body.find("{")
     end = body.rfind("}")
     if start >= 0 and end > start:
-        body = body[start : end + 1]
-    try:
-        parsed = json.loads(body)
-    except json.JSONDecodeError:
-        return {"summary": text.strip()}
+        snippet = body[start : end + 1]
+        try:
+            loaded = json.loads(snippet)
+        except json.JSONDecodeError:
+            loaded = None
+        if isinstance(loaded, dict) and any(
+            key in loaded for key in ("summary", "risks", "actions", "text", "answer")
+        ):
+            parsed = loaded
+    if parsed is None:
+        return {"summary": _normalize_ai_text(text)}
     if not isinstance(parsed, dict):
-        return {"summary": text.strip()}
+        return {"summary": _normalize_ai_text(text)}
     def _lines(value: Any) -> list[str]:
         if isinstance(value, list):
             return [str(item).strip() for item in value if str(item).strip()][:3]
@@ -111,7 +175,15 @@ def _parse_review(text: str) -> dict[str, Any]:
         return []
 
     return {
-        "summary": str(parsed.get("summary") or "").strip(),
+        "summary": _normalize_ai_text(
+            str(
+                parsed.get("summary")
+                or parsed.get("text")
+                or parsed.get("answer")
+                or parsed.get("content")
+                or ""
+            )
+        ),
         "risks": _lines(parsed.get("risks")),
         "actions": _lines(parsed.get("actions")),
     }
