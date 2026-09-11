@@ -57,7 +57,7 @@ CATEGORIES: list[dict[str, Any]] = [
             {"id": "proc_top_cpu", "name": "CPU 상위 프로세스", "desc": "CPU 기준 Top N", "help": "CPU를 많이 쓰는 프로세스 위쪽 몇 개를 남깁니다. 누가 바쁜지 볼 때 씁니다.", "primary": "ps aux --sort=-%cpu", "fallback": "동일", "commands": ["ps"], "default": True},
             {"id": "proc_top_mem", "name": "메모리 상위 프로세스", "desc": "메모리 기준 Top N", "help": "메모리를 많이 쓰는 프로세스 위쪽 몇 개를 남깁니다.", "primary": "ps aux --sort=-%mem", "fallback": "동일", "commands": ["ps"], "default": False},
             {"id": "proc_zombie", "name": "좀비 프로세스", "desc": "좀비 상태 프로세스 수", "help": "이미 끝났는데 부모가 거두지 않은 프로세스 개수입니다. 많으면 부모 프로세스를 의심합니다.", "primary": "ps aux", "fallback": "동일", "commands": ["ps"], "default": False},
-            {"id": "proc_service_alive", "name": "서비스 생존 확인", "desc": "실행 여부, 마지막 기동, 장애", "help": "적어 둔 이름이 살아 있는지, 언제 기동했는지, systemd 실패·재시작이 있는지를 봅니다. 서비스면 systemctl, 아니면 프로세스 시작 시각을 봅니다.", "primary": "systemctl show / ps etimes", "fallback": "pgrep", "commands": ["systemctl", "pgrep", "ps"], "default": True},
+            {"id": "proc_service_alive", "name": "서비스 생존 확인", "desc": "실행 여부, 마지막 기동, 장애", "help": "ps -ef | grep 이름 과 같이, 명령줄에 그 글자가 있는 프로세스가 있는지만 봅니다. grep 자신은 빼므로 iGateB31처럼 안 떠 있으면 없음입니다. iGateB11, 앱이름.jar, 앱이름.war 처럼 겹치지 않는 값을 넣습니다. java/python/sh 는 쓰지 않습니다.", "primary": "systemctl show / pgrep -x", "fallback": "ps args (grep 제외)", "commands": ["systemctl", "pgrep", "ps"], "default": True},
             {"id": "proc_fd_usage", "name": "파일 디스크립터 사용량", "desc": "fd 사용량/한도 대비", "help": "열린 파일·소켓이 얼마나 많은지 봅니다. lsof가 없으면 이 스크립트 자신의 개수만 셉니다.", "primary": "lsof | wc -l", "fallback": "/proc/<pid>/fd", "commands": ["lsof"], "default": False},
         ],
     },
@@ -176,6 +176,36 @@ run_check() {
   fi
 }
 
+find_proc_pid() {
+  local name="$1"
+  local pid="" base=""
+  base=$(printf '%s' "$name" | awk -F/ '{print $NF}')
+  [ -n "$base" ] || base="$name"
+  if have_cmd pgrep; then
+    pid=$(pgrep -x -- "$base" 2>/dev/null | awk 'NR==1 {print}')
+  fi
+  if [ -z "$pid" ] && have_cmd ps; then
+    pid=$(ps -eo pid=,comm=,args= 2>/dev/null | awk -v n="$name" -v b="$base" '
+      BEGIN {
+        generic["java"]=1; generic["python"]=1; generic["python2"]=1; generic["python3"]=1
+        generic["sh"]=1; generic["bash"]=1; generic["ksh"]=1; generic["node"]=1
+        generic["perl"]=1; generic["php"]=1; generic["ruby"]=1; generic["jsvc"]=1
+      }
+      {
+        pid=$1
+        comm=$2
+        args=""
+        for (i=3; i<=NF; i++) args=args (i==3 ? $i : " " $i)
+      }
+      comm=="grep" || comm=="pgrep" || comm=="egrep" || comm=="fgrep" { next }
+      comm==n || comm==b { print pid; exit }
+      generic[n] || generic[b] { next }
+      index(args, b) { print pid; exit }
+    ')
+  fi
+  printf '%s' "$pid"
+}
+
 probe_service() {
   local name="$1"
   OK=false
@@ -201,11 +231,8 @@ probe_service() {
       STARTED_AT="$ts"
     fi
   fi
-  if have_cmd pgrep; then
-    pid=$(pgrep -x "$name" 2>/dev/null | awk 'NR==1 {print}')
-    [ -z "$pid" ] && pid=$(pgrep -f "$name" 2>/dev/null | awk 'NR==1 {print}')
-  fi
-    if [ -n "$pid" ]; then
+  pid=$(find_proc_pid "$name")
+  if [ -n "$pid" ]; then
     OK=true
     case "$PROBLEM" in stopped|not_running) PROBLEM="" ;; esac
     DETAIL="pid $pid"
@@ -721,27 +748,18 @@ def module_by_id(module_id: str) -> dict[str, Any] | None:
 
 INSTANCE_SEARCH = r'''
 check_instance_search() {
-  local body="" first=1 name line pid cpu mem cmd
+  local body="" first=1 name pid cpu mem cmd
   for name in $SEARCH_NAMES; do
     [ -z "$name" ] && continue
     probe_service "$name"
-    pid=""
+    pid=$(find_proc_pid "$name")
     cpu="null"
     mem="null"
     cmd=""
-    if have_cmd ps; then
-      line=$(ps aux 2>/dev/null | grep -F -- "$name" | grep -v grep | awk 'NR==1 {print}')
-      if [ -n "$line" ]; then
-        OK=true
-        [ "$PROBLEM" = "not_running" ] && PROBLEM=""
-        pid=$(printf '%s' "$line" | awk '{print $2}')
-        cpu=$(json_num "$(printf '%s' "$line" | awk '{print $3}')")
-        mem=$(json_num "$(printf '%s' "$line" | awk '{print $4}')")
-        cmd=$(printf '%s' "$line" | awk '{for(i=11;i<=NF;i++) printf (i==11?$i:" "$i)}')
-        [ -z "$DETAIL" ] && DETAIL="pid $pid"
-        [ -z "$STARTED_AT" ] && STARTED_AT=$(ps -o lstart= -p "$pid" 2>/dev/null | awk '{$1=$1; print}')
-        [ -z "$UPTIME_SEC" ] && UPTIME_SEC=$(ps -o etimes= -p "$pid" 2>/dev/null | awk '{print $1+0}')
-      fi
+    if [ -n "$pid" ] && have_cmd ps; then
+      cpu=$(json_num "$(ps -o pcpu= -p "$pid" 2>/dev/null | awk '{print $1}')")
+      mem=$(json_num "$(ps -o pmem= -p "$pid" 2>/dev/null | awk '{print $1}')")
+      cmd=$(ps -o args= -p "$pid" 2>/dev/null | awk '{$1=$1; print}')
     fi
     [ $first -eq 1 ] || body="$body, "
     first=0

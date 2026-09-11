@@ -1454,6 +1454,8 @@ def _instance_status(row: dict[str, Any]) -> tuple[str, str]:
     problem_label = {"failed": "실패", "stopped": "중지", "not_running": "없음"}.get(problem, problem)
     if row.get("fail_days") or problem in {"failed", "not_running", "stopped"}:
         return "danger", problem_label or "중단"
+    if row.get("ok") is False:
+        return "danger", problem_label or "없음"
     if row.get("missing_days"):
         return "warn", "자료 없음"
     if problem:
@@ -1531,6 +1533,55 @@ def _instance_line(row: dict[str, Any]) -> str:
     if row.get("missing_days"):
         parts.append(f"자료 없음 {row.get('missing_days')}일")
     return ", ".join(parts)
+
+
+def _inline_md(text: str) -> str:
+    html = escape(text)
+    html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
+    html = re.sub(r"`(.+?)`", r"<code>\1</code>", html)
+    return html
+
+
+def _ai_text_html(text: str) -> str:
+    body = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    body = re.sub(
+        r"^(certainly|sure|of course|okay|ok)[^.?!]*[.?!]\s*",
+        "",
+        body,
+        flags=re.I,
+    )
+    if "\n" not in body and ("###" in body or "**" in body):
+        body = re.sub(r"\s*(#{2,4}\s+)", r"\n\n\1", body)
+        body = re.sub(r"\s+-\s+", "\n- ", body)
+    body = body.strip()
+    if not body:
+        return ""
+    parts: list[str] = []
+    list_items: list[str] = []
+
+    def flush_list() -> None:
+        if not list_items:
+            return
+        parts.append("<ul>" + "".join(f"<li>{_inline_md(item)}</li>" for item in list_items) + "</ul>")
+        list_items.clear()
+
+    for raw in body.split("\n"):
+        line = raw.strip()
+        if not line:
+            flush_list()
+            continue
+        if line.startswith("#"):
+            flush_list()
+            title = line.lstrip("#").strip()
+            parts.append(f"<h4>{_inline_md(title)}</h4>")
+            continue
+        if line.startswith(("- ", "* ")):
+            list_items.append(line[2:].strip())
+            continue
+        flush_list()
+        parts.append(f"<p>{_inline_md(line)}</p>")
+    flush_list()
+    return "".join(parts)
 
 
 def render_resource_report(
@@ -1671,7 +1722,7 @@ def render_resource_report(
 
     ai_html = ""
     if ai_summary or ai_risks or ai_actions:
-        blocks = [f"<p>{escape(ai_summary)}</p>"] if ai_summary else []
+        blocks = [_ai_text_html(ai_summary)] if ai_summary else []
         if ai_risks:
             blocks.append(
                 "<p>눈여겨볼 것</p><ul>"
@@ -1684,7 +1735,7 @@ def render_resource_report(
                 + "".join(f"<li>{escape(item)}</li>" for item in ai_actions)
                 + "</ul>"
             )
-        ai_html = "<h2>AI 총평</h2>" + "".join(blocks)
+        ai_html = "<h2>AI 총평</h2><div class='ai-review'>" + "".join(blocks) + "</div>"
 
     def _tag(level: str, text: str) -> str:
         if not level:
@@ -1916,6 +1967,13 @@ def render_resource_report(
     .empty {{ color: var(--muted); }}
     .issues {{ margin: 0 0 16px; padding-left: 1.2rem; color: var(--danger); }}
     .issues li {{ margin: 0.2rem 0; }}
+    .ai-review {{ background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }}
+    .ai-review p {{ margin: 0 0 10px; line-height: 1.55; }}
+    .ai-review p:last-child {{ margin-bottom: 0; }}
+    .ai-review h4 {{ font-size: 0.9rem; margin: 14px 0 6px; color: #344054; }}
+    .ai-review h4:first-child {{ margin-top: 0; }}
+    .ai-review ul {{ margin: 0 0 10px; padding-left: 1.2rem; }}
+    .ai-review li {{ margin: 0.2rem 0; line-height: 1.5; }}
   </style>
 </head>
 <body>

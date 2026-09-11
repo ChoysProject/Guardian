@@ -855,6 +855,12 @@ def reports_delete(report_id: int, db: Session = Depends(get_db)):
     return RedirectResponse(_reports_after_delete(plugin, 1), status_code=303)
 
 
+def _report_download_stem(item: Report) -> str:
+    raw = (item.title or f"report-{item.id}").strip()
+    safe = "".join("_" if ch in '\\/:*?"<>|' else ch for ch in raw).strip(" ._")
+    return safe or f"report-{item.id}"
+
+
 @app.get("/reports/{report_id}/embed", response_class=HTMLResponse)
 def report_embed(report_id: int, db: Session = Depends(get_db)):
     item = db.get(Report, report_id)
@@ -863,6 +869,22 @@ def report_embed(report_id: int, db: Session = Depends(get_db)):
     if item.html_path and Path(item.html_path).exists():
         return HTMLResponse(Path(item.html_path).read_text(encoding="utf-8"))
     raise HTTPException(404)
+
+
+@app.get("/reports/{report_id}/markdown")
+def report_markdown(report_id: int, db: Session = Depends(get_db)):
+    item = db.get(Report, report_id)
+    if not item or not is_resource_plugin(item.plugin):
+        raise HTTPException(404)
+    path = Path(item.markdown_path or "")
+    if not path.exists():
+        raise HTTPException(404)
+    filename = quote(_report_download_stem(item) + ".md")
+    return Response(
+        path.read_text(encoding="utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
 
 
 @app.get("/reports/{report_id}", response_class=HTMLResponse)
