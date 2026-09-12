@@ -347,6 +347,9 @@ def test_resource_server_register_edit_delete():
         assert created.status_code == 200
         assert "ssh-01" in created.text
         assert "guardian@10.0.0.21:22" in created.text
+        assert "커넥션" in created.text
+        assert "connection-status is-off" in created.text
+        assert ">disconnected<" in created.text
         # 비밀번호는 화면에 다시 나오지 않는다
         assert "s3cret" not in created.text
 
@@ -425,7 +428,135 @@ def test_resource_server_register_edit_delete():
             assert db.query(Server).filter(Server.name == "ssh-01").one_or_none() is None
 
 
-def test_resource_plugin_menu():
+def test_connection_status_on_resource_and_log_lists(monkeypatch):
+    def fake_probe(server):
+        if (server.name or "").endswith("-fail"):
+            return False, "connection refused"
+        return True, ""
+
+    monkeypatch.setattr("app.resource_collect.probe_server_connection", fake_probe)
+
+    def only_one(db, server_id):
+        item = db.get(Server, server_id)
+        return [item] if item else []
+
+    with SessionLocal() as db:
+        for name in ("conn-res-ok", "conn-log-fail"):
+            leftover = db.query(Server).filter(Server.name == name).one_or_none()
+            if leftover:
+                db.delete(leftover)
+        db.commit()
+
+    resource_id = None
+    log_id = None
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/servers/resources/new",
+                data={
+                    "name": "conn-res-ok",
+                    "collector_type": "ssh",
+                    "host": "10.0.0.31",
+                    "port": "22",
+                    "username": "guardian",
+                    "auth_type": "password",
+                    "password": "s3cret",
+                    "plugins": "resource_basic",
+                },
+                follow_redirects=True,
+            )
+            assert created.status_code == 200
+            assert "connection-status is-off" in created.text
+            assert ">disconnected<" in created.text
+            assert "/servers/resources/connect-all" in created.text
+            with SessionLocal() as db:
+                resource_id = db.query(Server).filter(Server.name == "conn-res-ok").one().id
+            monkeypatch.setattr(
+                "app.main._resource_servers",
+                lambda db, sid=resource_id: only_one(db, sid),
+            )
+
+            checked = client.post(
+                f"/servers/{resource_id}/connect",
+                data={"next": "/servers/resources"},
+                follow_redirects=True,
+            )
+            assert checked.status_code == 200
+            assert "connection-status is-ok" in checked.text
+            assert ">connection<" in checked.text
+            with SessionLocal() as db:
+                assert db.get(Server, resource_id).last_connect_ok is True
+
+            all_ok = client.post("/servers/resources/connect-all", follow_redirects=True)
+            assert all_ok.status_code == 200
+            assert "connection-refresh" in all_ok.text
+
+            logs = client.post(
+                "/servers/logs",
+                data={
+                    "name": "conn-log-fail",
+                    "collector_type": "ssh",
+                    "host": "10.0.0.32",
+                    "port": "22",
+                    "username": "guardian",
+                    "log_paths": "sample_logs/demo.log",
+                },
+                follow_redirects=True,
+            )
+            assert logs.status_code == 200
+            assert "커넥션" in logs.text
+            with SessionLocal() as db:
+                log_id = db.query(Server).filter(Server.name == "conn-log-fail").one().id
+            monkeypatch.setattr(
+                "app.main._log_servers",
+                lambda db, sid=log_id: only_one(db, sid),
+            )
+
+            failed = client.post(
+                f"/servers/{log_id}/connect",
+                data={"next": "/servers/logs"},
+                follow_redirects=True,
+            )
+            assert failed.status_code == 200
+            assert "connection-status is-off" in failed.text
+            assert ">disconnected<" in failed.text
+            with SessionLocal() as db:
+                assert db.get(Server, log_id).last_connect_ok is False
+
+            all_logs = client.post("/servers/logs/connect-all", follow_redirects=True)
+            assert all_logs.status_code == 200
+    finally:
+        with SessionLocal() as db:
+            for sid in (resource_id, log_id):
+                item = db.get(Server, sid) if sid else None
+                if item:
+                    db.delete(item)
+            db.commit()
+
+
+def test_probe_local_connection_is_always_ok():
+    from types import SimpleNamespace
+
+    from app.resource_collect import probe_server_connection
+
+    ok, detail = probe_server_connection(SimpleNamespace(collector_type="local", host="x"))
+    assert ok is True
+    assert detail == ""
+
+
+def test_connect_many_counts(monkeypatch):
+    class Item:
+        def __init__(self, name):
+            self.name = name
+
+    def fake_record(_db, server):
+        return (not server.name.endswith("fail"), "x")
+
+    monkeypatch.setattr("app.main.record_connection", fake_record)
+    from app.main import _connect_many
+
+    ok_n, fail_n = _connect_many(None, [Item("a"), Item("b-fail"), Item("c")])
+    assert (ok_n, fail_n) == (2, 1)
     with TestClient(app) as client:
         page = client.get("/plugins", follow_redirects=True)
         assert page.status_code == 200
@@ -726,6 +857,8 @@ def test_resource_server_list_has_no_instances():
         assert ">인스턴스<" not in page.text
         assert "화면에서 구분할 이름" in page.text
         assert "접속할 IP 또는 호스트명" in page.text
+        assert "커넥션" in page.text
+        assert "/servers/resources/connect-all" in page.text
         assert "eai-01" not in page.text
 
 

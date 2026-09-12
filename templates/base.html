@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <title>{{ app_name }} · {{ title | default("로그 감시") }}</title>
   <link href="/static/vendor/sb-admin-pro/css/styles.css" rel="stylesheet">
-  <link href="/static/css/guardian.css?v=report-export-1" rel="stylesheet">
+  <link href="/static/css/guardian.css?v=connection-status-3" rel="stylesheet">
   <link rel="icon" type="image/png" href="/static/vendor/sb-admin-pro/assets/img/favicon.png">
   <script src="/static/vendor/feather.min.js"></script>
 </head>
@@ -43,7 +43,7 @@
             <div class="collapse {% if servers_open %}show{% endif %}" id="collapseServers" data-bs-parent="#accordionSidenav">
               <nav class="sidenav-menu-nested nav">
                 <a class="nav-link {% if request.url.path.startswith('/servers/resources') %}active{% endif %}" href="/servers/resources">리소스 및 성능 수집 대상 서버</a>
-                <a class="nav-link js-soon {% if request.url.path.startswith('/servers/logs') %}active{% endif %}" href="#" data-toast="준비중입니다.">로그 수집 대상 서버 (추후 고도화)</a>
+                <a class="nav-link {% if request.url.path.startswith('/servers/logs') %}active{% endif %}" href="/servers/logs">로그 수집 대상 서버</a>
               </nav>
             </div>
             <a class="nav-link {% if request.url.path.startswith('/findings') %}active{% endif %}" href="/findings">

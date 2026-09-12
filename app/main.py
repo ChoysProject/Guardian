@@ -56,6 +56,7 @@ from app.resource_collect import (
     collect_server,
     dump_plugins,
     plugin_for_server,
+    record_connection,
     render_script,
     resource_plugins,
     test_connection,
@@ -234,14 +235,27 @@ def servers_root():
     return RedirectResponse("/servers/resources", status_code=307)
 
 
+def _log_servers(db: Session) -> list[Server]:
+    return [
+        item
+        for item in db.query(Server).order_by(Server.name).all()
+        if item.collect_logs
+    ]
+
+
 @app.get("/servers/logs", response_class=HTMLResponse)
-def servers_logs_page(request: Request, db: Session = Depends(get_db)):
-    servers = [item for item in db.query(Server).order_by(Server.name).all() if item.collect_logs]
+def servers_logs_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    notice: str = "",
+    error: str = "",
+):
+    servers = _log_servers(db)
     modes = {item.name: get_modes(item.name) for item in servers}
     return templates.TemplateResponse(
         request,
         "servers.html",
-        _ctx(request, servers=servers, server_modes=modes, error=""),
+        _ctx(request, servers=servers, server_modes=modes, notice=notice, error=error),
     )
 
 
@@ -257,7 +271,7 @@ def create_log_server(
     log_paths: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    servers = [item for item in db.query(Server).order_by(Server.name).all() if item.collect_logs]
+    servers = _log_servers(db)
     modes = {item.name: get_modes(item.name) for item in servers}
     try:
         clean = name.strip()
@@ -502,14 +516,72 @@ def resource_server_test(server_id: int, db: Session = Depends(get_db)):
     if not server:
         raise HTTPException(404)
     try:
+        record_connection(db, server)
         result = quote(test_connection(server)[:400])
         return RedirectResponse(
             f"/servers/resources/{server_id}/edit?tested={result}", status_code=303
         )
     except Exception as exc:  # noqa: BLE001 — 접속 실패 사유를 보여 준다
+        server.last_connect_ok = False
+        server.last_connect_at = datetime.utcnow()
+        server.last_connect_error = str(exc)[:400]
+        db.commit()
         return RedirectResponse(
             f"/servers/resources/{server_id}/edit?error={quote(str(exc)[:400])}", status_code=303
         )
+
+
+def _servers_next(raw: str, fallback: str) -> str:
+    text = (raw or "").strip()
+    if text.startswith("/servers"):
+        return text.split("#", 1)[0].split("?", 1)[0]
+    return fallback
+
+
+def _connect_many(db: Session, servers: list[Server]) -> tuple[int, int]:
+    ok_n = 0
+    fail_n = 0
+    for item in servers:
+        ok, _detail = record_connection(db, item)
+        if ok:
+            ok_n += 1
+        else:
+            fail_n += 1
+    return ok_n, fail_n
+
+
+@app.post("/servers/resources/connect-all")
+def resource_connect_all(db: Session = Depends(get_db)):
+    ok_n, fail_n = _connect_many(db, _resource_servers(db))
+    notice = quote(f"{ok_n} connection · {fail_n} disconnected")
+    return RedirectResponse(f"/servers/resources?notice={notice}#collecting", status_code=303)
+
+
+@app.post("/servers/logs/connect-all")
+def log_connect_all(db: Session = Depends(get_db)):
+    ok_n, fail_n = _connect_many(db, _log_servers(db))
+    notice = quote(f"{ok_n} connection · {fail_n} disconnected")
+    return RedirectResponse(f"/servers/logs?notice={notice}#collecting", status_code=303)
+
+
+@app.post("/servers/{server_id}/connect")
+def server_connect(
+    server_id: int,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    server = db.get(Server, server_id)
+    if not server:
+        raise HTTPException(404)
+    dest = _servers_next(next, "/servers/resources" if server.collect_resources else "/servers/logs")
+    ok, detail = record_connection(db, server)
+    if ok:
+        notice = quote(f"{server.name} connection")
+        return RedirectResponse(f"{dest}?notice={notice}#collecting", status_code=303)
+    return RedirectResponse(
+        f"{dest}?error={quote(f'{server.name} disconnected: {detail}')}#collecting",
+        status_code=303,
+    )
 
 
 @app.post("/servers/resources/{server_id}/clear-error")

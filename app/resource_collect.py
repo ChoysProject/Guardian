@@ -86,7 +86,15 @@ def _connect(server):
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     auth = (server.auth_type or "key").strip()
     password = decrypt(server.password_enc or "") if auth == "password" else ""
-    pkey = _private_key(server) if auth == "key" else None
+    pkey = None
+    allow_agent = auth == "agent"
+    look_for_keys = auth == "agent"
+    if auth == "key":
+        if server.key_path:
+            pkey = _private_key(server)
+        else:
+            allow_agent = True
+            look_for_keys = True
     if auth == "password" and not password:
         raise ValueError("저장된 비밀번호가 없습니다. 서버 수정에서 다시 넣어 주세요.")
     client.connect(
@@ -96,8 +104,8 @@ def _connect(server):
         password=password or None,
         pkey=pkey,
         timeout=settings.collect.ssh_timeout_seconds,
-        allow_agent=auth == "agent",
-        look_for_keys=auth == "agent",
+        allow_agent=allow_agent,
+        look_for_keys=look_for_keys,
     )
     return client
 
@@ -196,6 +204,32 @@ def collect_server(db, server, *, when: datetime | None = None) -> dict[str, Any
     server.last_resource_error = ""
     db.commit()
     return snapshot
+
+
+def probe_server_connection(server) -> tuple[bool, str]:
+    """SSH/SFTP 로 붙는지만 본다. 수집 스크립트는 돌리지 않는다."""
+    if (server.collector_type or "ssh") == "local":
+        return True, ""
+    try:
+        client = _connect(server)
+        try:
+            sftp = client.open_sftp()
+            sftp.close()
+        finally:
+            client.close()
+        return True, ""
+    except Exception as exc:  # noqa: BLE001 — 접속 실패 사유를 목록에 남긴다
+        return False, str(exc)[:400]
+
+
+def record_connection(db, server) -> tuple[bool, str]:
+    ok, detail = probe_server_connection(server)
+    server.last_connect_ok = ok
+    server.last_connect_at = datetime.utcnow()
+    server.last_connect_error = "" if ok else detail
+    db.add(server)
+    db.commit()
+    return ok, detail
 
 
 def test_connection(server) -> str:

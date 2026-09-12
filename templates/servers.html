@@ -47,12 +47,21 @@
 </div>
 
 <div class="card mb-4" id="collecting">
-  <div class="card-header">수집 중인 서버</div>
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>수집 중인 서버</span>
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
         <thead>
-          <tr><th>이름</th><th>대상</th><th>마지막 수집</th><th class="text-end">동작</th></tr>
+          <tr>
+            <th>이름</th>
+            <th>대상</th>
+            {% set connect_all_path = "/servers/logs/connect-all" %}
+            {% include "_connection_col_head.html" %}
+            <th>마지막 수집</th>
+            <th class="text-end">동작</th>
+          </tr>
         </thead>
         <tbody>
         {% for server in servers %}
@@ -63,6 +72,8 @@
               {% if server.collect_resources %}<span class="badge bg-success-soft text-success">리소스도 봄</span>{% endif %}
             </td>
             <td>{{ server.username + "@" if server.username else "" }}{{ server.host or "-" }}{% if server.port %}:{{ server.port }}{% endif %}</td>
+            {% set next_path = "/servers/logs" %}
+            {% include "_connection_status.html" %}
             <td>{{ server.last_collect_at | ts }}</td>
             <td class="text-nowrap text-end">
               <div class="d-flex justify-content-end gap-1">
@@ -90,7 +101,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="4" class="text-muted p-4">아직 등록한 서버가 없습니다.</td></tr>
+          <tr><td colspan="5" class="text-muted p-4">아직 등록한 서버가 없습니다.</td></tr>
         {% endfor %}
         </tbody>
       </table>

@@ -1,0 +1,10 @@
+<td class="connection-col">
+  <form method="post" action="/servers/{{ server.id }}/connect" class="mb-0">
+    <input type="hidden" name="next" value="{{ next_path }}">
+    {% if server.collector_type == "local" or server.last_connect_ok %}
+    <button class="connection-status is-ok" type="submit" title="{% if server.last_connect_at %}{{ server.last_connect_at | ts }} · {% endif %}누르면 다시 봅니다">connection</button>
+    {% else %}
+    <button class="connection-status is-off" type="submit" title="{{ server.last_connect_error or '누르면 다시 봅니다' }}">disconnected</button>
+    {% endif %}
+  </form>
+</td>

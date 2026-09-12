@@ -2,11 +2,6 @@
 {% set title = "현황" %}
 {% set heading = "감시 현황" %}
 {% set icon = "activity" %}
-{% block actions %}
-<form method="post" action="/collect">
-  <button class="btn btn-primary" type="submit"><i class="me-1" data-feather="refresh-cw"></i>지금 수집·분석</button>
-</form>
-{% endblock %}
 {% block header %}
 <header class="page-header page-header-dark bg-gradient-primary-to-secondary pb-10">
   <div class="container-xl px-4">
@@ -17,11 +12,6 @@
             감시 현황
           </h1>
           <div class="page-header-subtitle">로그 이상징후와 서버 리소스 상태</div>
-        </div>
-        <div class="col-12 col-xl-auto mt-4">
-          <form method="post" action="/collect">
-            <button class="btn btn-light" type="submit">지금 수집·분석</button>
-          </form>
         </div>
       </div>
     </div>

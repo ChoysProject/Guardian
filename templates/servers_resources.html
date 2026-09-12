@@ -100,11 +100,19 @@
     </div>
   </div>
   <div class="card-body p-0">
-    {% if servers %}
     <div class="table-responsive">
       <table class="table table-hover mb-0 align-middle">
         <thead>
-          <tr><th>이름</th><th>대상</th><th>인증</th><th>스크립트</th><th>자료</th><th class="text-end">동작</th></tr>
+          <tr>
+            <th>이름</th>
+            <th>대상</th>
+            {% set connect_all_path = "/servers/resources/connect-all" %}
+            {% include "_connection_col_head.html" %}
+            <th>인증</th>
+            <th>스크립트</th>
+            <th>자료</th>
+            <th class="text-end">동작</th>
+          </tr>
         </thead>
         <tbody>
         {% for server in servers %}
@@ -120,6 +128,8 @@
               {{ server.username + "@" if server.username else "" }}{{ server.host or "-" }}{% if server.port %}:{{ server.port }}{% endif %}
               <div class="text-muted">{{ server.collector_type }}</div>
             </td>
+            {% set next_path = "/servers/resources" %}
+            {% include "_connection_status.html" %}
             <td class="small">
               {% if server.auth_type == "password" %}비밀번호
               {% elif server.auth_type == "agent" %}에이전트
@@ -148,16 +158,15 @@
               </div>
             </td>
           </tr>
+        {% else %}
+          <tr><td colspan="7" class="text-muted p-4">아직 등록한 서버가 없습니다. 오른쪽 위 서버 등록하기를 눌러 접속 정보를 넣으세요.</td></tr>
         {% endfor %}
           <tr id="server-search-empty" class="d-none">
-            <td colspan="6" class="p-4 text-muted">조건에 맞는 서버가 없습니다.</td>
+            <td colspan="7" class="p-4 text-muted">조건에 맞는 서버가 없습니다.</td>
           </tr>
         </tbody>
       </table>
     </div>
-    {% else %}
-    <div class="p-4 text-muted">아직 등록한 서버가 없습니다. 오른쪽 위 서버 등록하기를 눌러 접속 정보를 넣으세요.</div>
-    {% endif %}
   </div>
 </div>
 

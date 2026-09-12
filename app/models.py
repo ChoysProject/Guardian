@@ -35,6 +35,9 @@ class Server(Base):
     last_error: Mapped[str] = mapped_column(Text, default="")
     last_resource_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_resource_error: Mapped[str] = mapped_column(Text, default="")
+    last_connect_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_connect_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_connect_error: Mapped[str] = mapped_column(Text, default="")
     note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -155,6 +158,9 @@ def init_db() -> None:
             ("plugins", "TEXT DEFAULT '[]'"),
             ("last_resource_at", "DATETIME"),
             ("last_resource_error", "TEXT DEFAULT ''"),
+            ("last_connect_ok", "INTEGER"),
+            ("last_connect_at", "DATETIME"),
+            ("last_connect_error", "TEXT DEFAULT ''"),
             ("note", "TEXT DEFAULT ''"),
             ("collect_path", "TEXT DEFAULT ''"),
         ]

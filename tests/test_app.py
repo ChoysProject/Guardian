@@ -18,7 +18,8 @@ def test_health_and_dashboard_and_pipeline():
         assert reached.status_code == 200
         assert "10.20.30.40:8080" in reached.text
         assert "리소스 및 성능" in home.text
-        assert "로그 수집 대상 서버 (추후 고도화)" in home.text
+        assert "로그 수집 대상 서버" in home.text
+        assert 'href="/servers/logs"' in home.text
         assert "로그 분석 보고서 (추후 고도화)" in home.text
         assert "리소스 및 성능 플러그인 (추후 고도화)" in home.text
         assert "로그 분석 플러그인 (추후 고도화)" in home.text
@@ -91,6 +92,9 @@ def test_health_and_dashboard_and_pipeline():
         assert servers_page.status_code == 200
         assert "로그 수집 대상 서버" in servers_page.text
         assert "수집 중인 서버" in servers_page.text
+        assert "커넥션" in servers_page.text
+        assert "/servers/logs/connect-all" in servers_page.text
+        assert "connection-status" in servers_page.text
         assert "정보" in servers_page.text
         created = client.post(
             "/servers/logs",
