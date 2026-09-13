@@ -1,0 +1,23 @@
+name: rabbitmq
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: mq
+system_label: 메시징
+label: RabbitMQ
+description: RabbitMQ 메모리 알람, 큐 미러, 연결 끊김을 찾습니다.
+targets: ["rabbit-.*", "rabbitmq-.*"]
+rules:
+  - pattern: "memory alarm|disk alarm|resource_alarm"
+    severity: error
+    signature: rabbitmq.alarm
+    min_count: 1
+  - pattern: "connection_closed_abruptly|handshake_timeout"
+    severity: warn
+    signature: rabbitmq.conn
+    min_count: 2
+  - pattern: "queue .* crashed|mirroring"
+    severity: error
+    signature: rabbitmq.queue
+    min_count: 1

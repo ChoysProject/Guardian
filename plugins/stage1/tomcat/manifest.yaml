@@ -1,0 +1,27 @@
+name: tomcat
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: was
+system_label: WAS
+label: Tomcat
+description: Tomcat/Catalina OOM, 세션, 커넥터 오류를 찾습니다.
+targets: ["tomcat-.*"]
+rules:
+  - pattern: "OutOfMemoryError|Java heap space|GC overhead"
+    severity: error
+    signature: tomcat.oom
+    min_count: 1
+  - pattern: "SEVERE|Catalina\\.startup\\.ContextConfig"
+    severity: error
+    signature: tomcat.severe
+    min_count: 2
+  - pattern: "ProtocolHandler .* failed|Connector .* failed"
+    severity: error
+    signature: tomcat.connector
+    min_count: 1
+  - pattern: "Session .* expired|unable to compile class"
+    severity: warn
+    signature: tomcat.session
+    min_count: 2

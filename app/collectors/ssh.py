@@ -1,38 +1,17 @@
 from __future__ import annotations
 
 import fnmatch
-from pathlib import Path, PurePosixPath
-
-import paramiko
+from pathlib import PurePosixPath
 
 from app.collectors.base import CollectedChunk, Collector
-
-
-def _load_private_key(key_file: Path):
-    errors: list[str] = []
-    for loader in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
-        try:
-            return loader.from_private_key_file(str(key_file))
-        except Exception as exc:  # noqa: BLE001 — 키 종류를 순차로 시도
-            errors.append(f"{loader.__name__}: {exc}")
-    raise ValueError("SSH 개인키를 읽지 못했습니다. " + " | ".join(errors))
+from app.models import Server
 
 
 class SshTailCollector(Collector):
     name = "ssh"
 
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        username: str,
-        key_path: str,
-        timeout: int = 20,
-    ) -> None:
-        self.host = host
-        self.port = port
-        self.username = username
-        self.key_path = key_path
+    def __init__(self, server: Server, timeout: int = 20) -> None:
+        self.server = server
         self.timeout = timeout
         self._client = None
         self._sftp = None
@@ -40,22 +19,10 @@ class SshTailCollector(Collector):
     def open(self) -> None:
         if self._sftp is not None:
             return
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        pkey = None
-        if self.key_path:
-            pkey = _load_private_key(Path(self.key_path).expanduser())
-        client.connect(
-            hostname=self.host,
-            port=self.port,
-            username=self.username,
-            pkey=pkey,
-            timeout=self.timeout,
-            allow_agent=True,
-            look_for_keys=not bool(pkey),
-        )
-        self._client = client
-        self._sftp = client.open_sftp()
+        from app.resource_collect import _connect
+
+        self._client = _connect(self.server)
+        self._sftp = self._client.open_sftp()
 
     def close(self) -> None:
         if self._sftp is not None:

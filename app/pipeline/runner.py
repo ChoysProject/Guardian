@@ -128,8 +128,20 @@ def _analyze_server(db: Session, server: Server, events: list) -> int:
     if not events:
         return 0
     host = server.host or server.name
-    drafts = run_stage1(server.name, host, events)
-    drafts.extend(run_stage2(server.name, host, events))
+    drafts = run_stage1(
+        server.name,
+        host,
+        events,
+        selected=parse_json_list(getattr(server, "log_plugins", "") or ""),
+    )
+    drafts.extend(
+        run_stage2(
+            server.name,
+            host,
+            events,
+            selected=parse_json_list(getattr(server, "custom_plugins", "") or ""),
+        )
+    )
     drafts = _merge_drafts(drafts)
     comments = annotate_findings(drafts)
     created = 0

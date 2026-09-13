@@ -51,7 +51,7 @@ def analyze(ctx) -> list[dict]:
                 "sample_lines": samples,
                 "host": host,
                 "occurred_at": occurred,
-                "plugin": "stage2.auth_failures",
+                "plugin": "stage1.auth_failures",
             }
         )
 
@@ -66,7 +66,7 @@ def analyze(ctx) -> list[dict]:
                 "sample_lines": data["sample_lines"],
                 "host": data["host"],
                 "occurred_at": data["occurred_at"],
-                "plugin": "stage2.auth_failures",
+                "plugin": "stage1.auth_failures",
             }
         )
     return findings

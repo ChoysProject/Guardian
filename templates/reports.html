@@ -3,7 +3,7 @@
 {% set heading = "로그 분석 보고서" %}
 {% block content %}
 <div class="d-flex align-items-center mb-3 report-toolbar">
-  <div class="alert alert-info mb-0 flex-grow-1" role="alert">활성화된 서버를 골라 로그 이상징후 보고서를 만듭니다. 지정 시각 {{ report_time }} 에는 켜진 서버 전부입니다.</div>
+  <div class="alert alert-info mb-0 flex-grow-1" role="alert">보고서가 어떤 식으로 나올지는 로그 분석 플러그인의 보고서 형식에서 정합니다. 여기서는 서버를 골라 그 형식으로 만듭니다. 지정 시각 {{ report_time }} 에는 켜진 서버 전부입니다.</div>
   <div class="dropdown ms-3 flex-shrink-0">
     <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">오늘 보고서 생성</button>
     <div class="dropdown-menu dropdown-menu-end p-3 report-picker">
@@ -23,6 +23,42 @@
     </div>
   </div>
 </div>
+
+{% if report_rows %}
+<div class="server-report-grid mb-4">
+  {% for row in report_rows %}
+  <article class="server-report-card">
+    <div class="server-report-card-head">
+      <div class="min-w-0">
+        <div class="server-report-name">{{ row.server.name }}</div>
+        <div class="small text-muted text-truncate">
+          {% if row.latest %}{{ row.latest.title }}
+          {% elif row.findings %}징후 {{ row.findings }}건 · 아직 보고서가 없습니다.
+          {% else %}아직 징후가 없습니다.{% endif %}
+        </div>
+      </div>
+      {% if row.findings %}
+      <span class="tag warn">징후 {{ row.findings }}</span>
+      {% endif %}
+    </div>
+    <div class="server-report-card-actions report-actions">
+      <a class="btn btn-sm btn-outline-secondary" href="/servers/logs/{{ row.server.id }}/edit">서버</a>
+      {% if row.latest %}
+      <a class="btn btn-sm btn-outline-secondary" href="/reports/{{ row.latest.id }}">최근 보고서</a>
+      {% endif %}
+      <form class="js-report-generate" method="post" action="/reports/generate">
+        <input type="hidden" name="selecting" value="1">
+        <input type="hidden" name="servers" value="{{ row.server.name }}">
+        <button class="btn btn-sm btn-outline-primary" type="submit">
+          {% if row.latest %}다시 만들기{% else %}보고서 만들기{% endif %}
+        </button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="card mb-4">
   <div class="card-header">보고서 목록</div>
   <div class="card-body p-0">
@@ -50,7 +86,7 @@
       </table>
     </div>
     {% else %}
-    <div class="p-4 text-muted">아직 보고서가 없습니다.</div>
+    <div class="p-4 text-muted">아직 보고서가 없습니다. 위에서 서버를 골라 만들어 보세요.</div>
     {% endif %}
   </div>
 </div>

@@ -14,7 +14,7 @@ from app.main import app
 from app.models import Report, SessionLocal, Server
 from app.plugins import editor as plugin_editor
 from app.resource_collect import plugin_for_server
-from app.secrets_store import decrypt
+from app.secrets_store import decrypt, generate_ssh_key, public_key_from_path
 from app.resource_script import build_script
 from app.resources import (
     analyze_server,
@@ -347,6 +347,9 @@ def test_resource_server_register_edit_delete():
         assert created.status_code == 200
         assert "ssh-01" in created.text
         assert "guardian@10.0.0.21:22" in created.text
+        assert "커넥션 상태" in created.text
+        assert "connection-status is-off" in created.text
+        assert ">disconnection<" in created.text
         # 비밀번호는 화면에 다시 나오지 않는다
         assert "s3cret" not in created.text
 
@@ -425,7 +428,390 @@ def test_resource_server_register_edit_delete():
             assert db.query(Server).filter(Server.name == "ssh-01").one_or_none() is None
 
 
-def test_resource_plugin_menu():
+def test_generate_ssh_key_makes_openssh_pair(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.secrets_store.keys_dir", lambda: tmp_path)
+    path = generate_ssh_key()
+    assert Path(path).name == "guardian.key"
+    pub = public_key_from_path(path, comment="guardian")
+    assert pub.startswith("ssh-ed25519 ")
+    assert pub.endswith(" guardian")
+    from paramiko import Ed25519Key
+
+    Ed25519Key.from_private_key_file(path)
+    again = generate_ssh_key()
+    assert Path(again).name == "guardian.key"
+    assert public_key_from_path(again, comment="guardian") != pub
+
+
+def test_resource_server_auto_makes_key_and_shows_public():
+    ids = []
+    try:
+        with TestClient(app) as client:
+            with SessionLocal() as db:
+                for name in ("keygen-01", "keygen-02"):
+                    leftover = db.query(Server).filter(Server.name == name).one_or_none()
+                    if leftover:
+                        db.delete(leftover)
+                db.commit()
+            created = client.post(
+                "/servers/resources/new",
+                data={
+                    "name": "keygen-01",
+                    "collector_type": "ssh",
+                    "host": "10.0.0.40",
+                    "port": "22",
+                    "username": "guardian",
+                    "auth_type": "key",
+                    "plugins": "resource_basic",
+                },
+                follow_redirects=True,
+            )
+            assert created.status_code == 200
+            assert "ssh-ed25519" in created.text
+            assert "공개키" in created.text
+            assert "이 PC 공용" in created.text
+            assert "/edit" in str(created.url)
+            assert "복사" in created.text
+            with SessionLocal() as db:
+                first = db.query(Server).filter(Server.name == "keygen-01").one()
+                ids.append(first.id)
+                first_pub = public_key_from_path(first.key_path, comment="guardian")
+                first_path = first.key_path
+            assert first_pub in created.text
+            assert Path(first_path).name == "guardian.key"
+
+            second = client.post(
+                "/servers/resources/new",
+                data={
+                    "name": "keygen-02",
+                    "collector_type": "ssh",
+                    "host": "10.0.0.41",
+                    "port": "22",
+                    "username": "guardian",
+                    "auth_type": "key",
+                    "plugins": "resource_basic",
+                },
+                follow_redirects=True,
+            )
+            assert second.status_code == 200
+            with SessionLocal() as db:
+                other = db.query(Server).filter(Server.name == "keygen-02").one()
+                ids.append(other.id)
+                assert other.key_path == first_path
+                assert public_key_from_path(other.key_path, comment="guardian") == first_pub
+    finally:
+        with TestClient(app) as client:
+            for sid in ids:
+                client.post(f"/servers/resources/{sid}/delete", follow_redirects=True)
+
+
+def test_resource_server_save_keeps_key_when_auth_blank():
+    server_id = None
+    try:
+        with TestClient(app) as client:
+            with SessionLocal() as db:
+                leftover = db.query(Server).filter(Server.name == "keykeep-01").one_or_none()
+                if leftover:
+                    db.delete(leftover)
+                    db.commit()
+            created = client.post(
+                "/servers/resources/new",
+                data={
+                    "name": "keykeep-01",
+                    "collector_type": "ssh",
+                    "host": "127.0.0.1",
+                    "port": "22",
+                    "username": "choys",
+                    "auth_type": "key",
+                    "plugins": "resource_basic",
+                },
+                follow_redirects=True,
+            )
+            assert created.status_code == 200
+            with SessionLocal() as db:
+                server = db.query(Server).filter(Server.name == "keykeep-01").one()
+                server_id = server.id
+                kept_path = server.key_path
+            assert kept_path
+            saved = client.post(
+                f"/servers/resources/{server_id}/edit",
+                data={
+                    "host": "172.20.193.4",
+                    "port": "22",
+                    "username": "choys",
+                    "collector_type": "ssh",
+                    "auth_type": "",
+                    "password": "",
+                    "key_path": "",
+                    "plugins": "resource_basic",
+                    "note": "wsl",
+                    "collect_path": "",
+                },
+                follow_redirects=True,
+            )
+            assert saved.status_code == 200
+            assert "ssh-ed25519" in saved.text
+            with SessionLocal() as db:
+                server = db.get(Server, server_id)
+                assert server.host == "172.20.193.4"
+                assert server.auth_type == "key"
+                assert server.key_path == kept_path
+    finally:
+        if server_id:
+            with TestClient(app) as client:
+                client.post(f"/servers/resources/{server_id}/delete", follow_redirects=True)
+
+
+def test_log_server_key_edit_and_existing_resource():
+    log_id = None
+    resource_id = None
+    try:
+        with TestClient(app) as client:
+            with SessionLocal() as db:
+                for name in ("logkey-01", "logattach-01"):
+                    leftover = db.query(Server).filter(Server.name == name).one_or_none()
+                    if leftover:
+                        db.delete(leftover)
+                db.commit()
+            created = client.post(
+                "/servers/logs",
+                data={
+                    "name": "logkey-01",
+                    "collector_type": "ssh",
+                    "host": "10.0.0.50",
+                    "port": "22",
+                    "username": "guardian",
+                    "auth_type": "key",
+                    "log_paths": "/var/log/messages",
+                    "note": "로그 시험",
+                },
+                follow_redirects=True,
+            )
+            assert created.status_code == 200
+            assert "logkey-01 수정" in created.text
+            assert "ssh-ed25519" in created.text
+            assert "공개키" in created.text
+            assert "/var/log/messages" in created.text
+            with SessionLocal() as db:
+                server = db.query(Server).filter(Server.name == "logkey-01").one()
+                log_id = server.id
+                kept_path = server.key_path
+                assert server.collect_logs is True
+                assert server.collect_resources is False
+            assert kept_path
+            saved = client.post(
+                f"/servers/logs/{log_id}/edit",
+                data={
+                    "host": "10.0.0.51",
+                    "port": "22",
+                    "username": "guardian",
+                    "collector_type": "ssh",
+                    "auth_type": "",
+                    "password": "",
+                    "key_path": "",
+                    "log_paths": "/var/log/secure",
+                    "note": "경로 바꿈",
+                },
+                follow_redirects=True,
+            )
+            assert saved.status_code == 200
+            assert "ssh-ed25519" in saved.text
+            with SessionLocal() as db:
+                server = db.get(Server, log_id)
+                assert server.host == "10.0.0.51"
+                assert server.auth_type == "key"
+                assert server.key_path == kept_path
+                assert "/var/log/secure" in server.log_paths
+            listed = client.get("/servers/logs")
+            assert listed.status_code == 200
+            assert "logkey-01" in listed.text
+            assert "개인키" in listed.text
+            assert 'href="/servers/logs/%s/edit"' % log_id in listed.text
+
+            resource = client.post(
+                "/servers/resources/new",
+                data={
+                    "name": "logattach-01",
+                    "collector_type": "ssh",
+                    "host": "10.0.0.52",
+                    "port": "22",
+                    "username": "guardian",
+                    "auth_type": "password",
+                    "password": "s3cret",
+                    "plugins": "resource_basic",
+                },
+                follow_redirects=True,
+            )
+            assert resource.status_code == 200
+            with SessionLocal() as db:
+                attached = db.query(Server).filter(Server.name == "logattach-01").one()
+                resource_id = attached.id
+                assert attached.collect_logs is False
+                assert attached.auth_type == "password"
+            enabled = client.post(
+                "/servers/logs",
+                data={
+                    "name": "logattach-01",
+                    "collector_type": "ssh",
+                    "host": "should-not-overwrite",
+                    "log_paths": "/var/log/app.log",
+                    "auth_type": "key",
+                },
+                follow_redirects=True,
+            )
+            assert enabled.status_code == 200
+            assert "logattach-01" in enabled.text
+            with SessionLocal() as db:
+                attached = db.get(Server, resource_id)
+                assert attached.collect_logs is True
+                assert attached.collect_resources is True
+                assert attached.auth_type == "password"
+                assert attached.host == "10.0.0.52"
+                assert "/var/log/app.log" in attached.log_paths
+    finally:
+        with TestClient(app) as client:
+            if log_id:
+                client.post(f"/servers/logs/{log_id}/delete", follow_redirects=True)
+            if resource_id:
+                client.post(f"/servers/resources/{resource_id}/delete", follow_redirects=True)
+                client.post(f"/servers/logs/{resource_id}/delete", follow_redirects=True)
+
+
+def test_connection_status_on_resource_and_log_lists(monkeypatch):
+    def fake_probe(server):
+        if (server.name or "").endswith("-fail"):
+            return False, "connection refused"
+        return True, ""
+
+    monkeypatch.setattr("app.resource_collect.probe_server_connection", fake_probe)
+
+    def only_one(db, server_id):
+        item = db.get(Server, server_id)
+        return [item] if item else []
+
+    with SessionLocal() as db:
+        for name in ("conn-res-ok", "conn-log-fail"):
+            leftover = db.query(Server).filter(Server.name == name).one_or_none()
+            if leftover:
+                db.delete(leftover)
+        db.commit()
+
+    resource_id = None
+    log_id = None
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/servers/resources/new",
+                data={
+                    "name": "conn-res-ok",
+                    "collector_type": "ssh",
+                    "host": "10.0.0.31",
+                    "port": "22",
+                    "username": "guardian",
+                    "auth_type": "password",
+                    "password": "s3cret",
+                    "plugins": "resource_basic",
+                },
+                follow_redirects=True,
+            )
+            assert created.status_code == 200
+            assert "connection-status is-off" in created.text
+            assert ">disconnection<" in created.text
+            assert "/servers/resources/connect-all" in created.text
+            with SessionLocal() as db:
+                resource_id = db.query(Server).filter(Server.name == "conn-res-ok").one().id
+            monkeypatch.setattr(
+                "app.main._resource_servers",
+                lambda db, sid=resource_id: only_one(db, sid),
+            )
+
+            checked = client.post(
+                f"/servers/{resource_id}/connect",
+                data={"next": "/servers/resources"},
+                follow_redirects=True,
+            )
+            assert checked.status_code == 200
+            assert "connection-status is-ok" in checked.text
+            assert ">connection<" in checked.text
+            with SessionLocal() as db:
+                assert db.get(Server, resource_id).last_connect_ok is True
+
+            all_ok = client.post("/servers/resources/connect-all", follow_redirects=True)
+            assert all_ok.status_code == 200
+            assert "connection-refresh" in all_ok.text
+
+            logs = client.post(
+                "/servers/logs",
+                data={
+                    "name": "conn-log-fail",
+                    "collector_type": "ssh",
+                    "host": "10.0.0.32",
+                    "port": "22",
+                    "username": "guardian",
+                    "auth_type": "password",
+                    "password": "s3cret",
+                    "log_paths": "sample_logs/demo.log",
+                },
+                follow_redirects=True,
+            )
+            assert logs.status_code == 200
+            listed = client.get("/servers/logs")
+            assert listed.status_code == 200
+            assert "커넥션 상태" in listed.text
+            assert "conn-log-fail" in listed.text
+            assert "수정" in listed.text
+            with SessionLocal() as db:
+                log_id = db.query(Server).filter(Server.name == "conn-log-fail").one().id
+            monkeypatch.setattr(
+                "app.main._log_servers",
+                lambda db, sid=log_id: only_one(db, sid),
+            )
+
+            failed = client.post(
+                f"/servers/{log_id}/connect",
+                data={"next": "/servers/logs"},
+                follow_redirects=True,
+            )
+            assert failed.status_code == 200
+            assert "connection-status is-off" in failed.text
+            assert ">disconnection<" in failed.text
+            with SessionLocal() as db:
+                assert db.get(Server, log_id).last_connect_ok is False
+
+            all_logs = client.post("/servers/logs/connect-all", follow_redirects=True)
+            assert all_logs.status_code == 200
+    finally:
+        with SessionLocal() as db:
+            for sid in (resource_id, log_id):
+                item = db.get(Server, sid) if sid else None
+                if item:
+                    db.delete(item)
+            db.commit()
+
+
+def test_probe_local_connection_is_always_ok():
+    from types import SimpleNamespace
+
+    from app.resource_collect import probe_server_connection
+
+    ok, detail = probe_server_connection(SimpleNamespace(collector_type="local", host="x"))
+    assert ok is True
+    assert detail == ""
+
+
+def test_connect_many_counts(monkeypatch):
+    class Item:
+        def __init__(self, name):
+            self.name = name
+
+    def fake_record(_db, server):
+        return (not server.name.endswith("fail"), "x")
+
+    monkeypatch.setattr("app.main.record_connection", fake_record)
+    from app.main import _connect_many
+
+    ok_n, fail_n = _connect_many(None, [Item("a"), Item("b-fail"), Item("c")])
+    assert (ok_n, fail_n) == (2, 1)
     with TestClient(app) as client:
         page = client.get("/plugins", follow_redirects=True)
         assert page.status_code == 200
@@ -726,6 +1112,8 @@ def test_resource_server_list_has_no_instances():
         assert ">인스턴스<" not in page.text
         assert "화면에서 구분할 이름" in page.text
         assert "접속할 IP 또는 호스트명" in page.text
+        assert "커넥션 상태" in page.text
+        assert "/servers/resources/connect-all" in page.text
         assert "eai-01" not in page.text
 
 

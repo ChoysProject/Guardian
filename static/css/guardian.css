@@ -595,3 +595,74 @@ body {
 .resource-delete-item .form-check-input {
   margin-top: 0.35rem;
 }
+.connection-col {
+  width: 1%;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.connection-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.connection-status {
+  display: inline-block;
+  margin: 0;
+  padding: 0.22rem 0.55rem;
+  border: 0;
+  border-radius: 0.2rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.connection-status.is-ok {
+  background: #00ac69;
+  color: #fff;
+}
+.connection-status.is-off {
+  background: #e81500;
+  color: #fff;
+}
+.connection-status:hover,
+.connection-status:focus-visible {
+  filter: brightness(0.92);
+  outline: none;
+}
+.connection-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: none;
+  color: #69707a;
+  cursor: pointer;
+}
+.connection-refresh:hover,
+.connection-refresh:focus-visible {
+  color: #363d47;
+  background: #eef2f6;
+  outline: none;
+}
+.connection-refresh:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: none;
+}
+.connection-refresh .feather {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.guardian-pubkey {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  resize: none;
+}

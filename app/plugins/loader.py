@@ -11,16 +11,37 @@ from app.config import settings
 from app.plugins.types import PluginManifest
 
 
+def _system_of(data: dict[str, Any], name: str, targets: list[str]) -> tuple[str, str]:
+    system = str(data.get("system") or "").strip()
+    label = str(data.get("system_label") or "").strip()
+    if not system:
+        system = "common" if (not targets or "*" in targets) else name
+    if not label:
+        if system == "common":
+            label = "공통"
+        elif system == "custom":
+            label = "세부 에러"
+        else:
+            label = system.upper()
+    return system, label
+
+
 def _read_manifest(path: Path) -> PluginManifest:
     with path.open(encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
+    name = data.get("name") or path.parent.name
+    targets = list(data["targets"]) if "targets" in data and data["targets"] is not None else ["*"]
+    system, system_label = _system_of(data, name, targets)
     return PluginManifest(
-        name=data.get("name") or path.parent.name,
+        name=name,
         stage=int(data.get("stage", 2)),
         version=str(data.get("version", "1.0")),
         description=data.get("description", ""),
         plugin_type=data.get("type", "python"),
-        targets=list(data.get("targets") or ["*"]),
+        targets=targets,
+        system=system,
+        system_label=system_label,
+        label=str(data.get("label") or "").strip() or name,
         enabled=bool(data.get("enabled", True)),
         config=dict(data.get("config") or {}),
         rules=list(data.get("rules") or []),
@@ -62,8 +83,10 @@ def load_python_callable(manifest: PluginManifest, attr: str):
 
 
 def targets_match(manifest: PluginManifest, server_name: str) -> bool:
-    if not manifest.targets or "*" in manifest.targets:
+    if "*" in (manifest.targets or []):
         return True
+    if not manifest.targets:
+        return False
     return any(
         server_name == target or re.fullmatch(target, server_name)
         for target in manifest.targets

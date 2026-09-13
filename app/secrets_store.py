@@ -10,6 +10,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from app.config import settings
 
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+SHARED_KEY_NAME = "guardian"
 
 
 def _key_file() -> Path:
@@ -58,6 +59,20 @@ def keys_dir() -> Path:
     return path
 
 
+def shared_key_path() -> Path:
+    return keys_dir() / f"{SHARED_KEY_NAME}.key"
+
+
+def is_shared_key(key_path: str) -> bool:
+    path = Path(key_path or "")
+    if not key_path:
+        return False
+    try:
+        return path.expanduser().resolve() == shared_key_path().resolve()
+    except OSError:
+        return path.name == f"{SHARED_KEY_NAME}.key"
+
+
 def save_key(server_name: str, data: bytes) -> str:
     """올린 개인키를 data/keys 아래 두고 경로를 돌려준다."""
     body = (data or b"").strip()
@@ -73,6 +88,9 @@ def save_key(server_name: str, data: bytes) -> str:
 
 
 def delete_key(key_path: str) -> None:
+    """서버 전용으로 올린 키만 지운다. 이 PC 공용 키는 남겨 둔다."""
+    if is_shared_key(key_path):
+        return
     path = Path(key_path or "")
     if not path.name:
         return
@@ -87,6 +105,62 @@ def key_label(key_path: str) -> str:
     path = Path(key_path or "")
     if not key_path:
         return ""
+    if is_shared_key(key_path):
+        return f"{path.name} (이 PC 공용)"
     if path.parent.resolve(strict=False) == keys_dir().resolve():
         return f"{path.name} (등록됨)"
     return str(key_path)
+
+
+def generate_ssh_key() -> str:
+    """이 PC용 Ed25519 개인키 하나를 만들어 data/keys/guardian.key 에 둔다."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import serialization
+
+    private = Ed25519PrivateKey.generate()
+    pem = private.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.OpenSSH,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    return save_key(SHARED_KEY_NAME, pem)
+
+
+def ensure_ssh_key() -> tuple[str, bool]:
+    """공용 키가 있으면 그대로 쓰고, 없으면 만든다. (경로, 새로 만들었는지)."""
+    path = shared_key_path()
+    if path.exists():
+        return str(path), False
+    return generate_ssh_key(), True
+
+
+def public_key_from_path(key_path: str, comment: str = "") -> str:
+    """authorized_keys 에 넣을 공개키 한 줄을 개인키에서 만든다."""
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding,
+        PublicFormat,
+        load_pem_private_key,
+        load_ssh_private_key,
+    )
+
+    path = Path(key_path or "").expanduser()
+    if not key_path or not path.exists():
+        return ""
+    data = path.read_bytes()
+    loaded = None
+    for loader in (
+        lambda body: load_ssh_private_key(body, password=None),
+        lambda body: load_pem_private_key(body, password=None),
+    ):
+        try:
+            loaded = loader(data)
+            break
+        except Exception:  # noqa: BLE001 — 키 형식을 차례로 시도
+            continue
+    if loaded is None:
+        return ""
+    line = loaded.public_key().public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH).decode("ascii").strip()
+    extra = (comment or "").strip()
+    if extra:
+        return f"{line} {extra}"
+    return line

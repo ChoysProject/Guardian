@@ -1,0 +1,23 @@
+name: systemd
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: os
+system_label: OS/서비스
+label: systemd 서비스
+description: systemd 기동 실패, watchdog, coredump를 찾습니다.
+targets: ["os-.*", "linux-.*"]
+rules:
+  - pattern: "Failed to start|Unit .* failed|status=1/FAILURE"
+    severity: error
+    signature: systemd.unit_failed
+    min_count: 1
+  - pattern: "Watchdog timeout|main process exited"
+    severity: error
+    signature: systemd.watchdog
+    min_count: 1
+  - pattern: "coredump|segfault at"
+    severity: error
+    signature: systemd.coredump
+    min_count: 1

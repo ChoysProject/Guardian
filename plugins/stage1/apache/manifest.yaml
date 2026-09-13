@@ -1,0 +1,23 @@
+name: apache
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: web
+system_label: 웹 서버
+label: Apache httpd
+description: Apache AH 오류, MaxRequestWorkers, 세그폴트를 찾습니다.
+targets: ["apache-.*", "httpd-.*"]
+rules:
+  - pattern: "AH\\d{5}|MaxRequestWorkers"
+    severity: error
+    signature: apache.limit
+    min_count: 1
+  - pattern: "segmentation fault|child pid .* exit signal"
+    severity: error
+    signature: apache.child_crash
+    min_count: 1
+  - pattern: "server reached MaxClients|too many connections"
+    severity: warn
+    signature: apache.max_clients
+    min_count: 1

@@ -29,12 +29,17 @@ class Server(Base):
     collect_resources: Mapped[bool] = mapped_column(Boolean, default=False)
     instances: Mapped[str] = mapped_column(Text, default="[]")
     plugins: Mapped[str] = mapped_column(Text, default="[]")
+    log_plugins: Mapped[str] = mapped_column(Text, default="[]")
+    custom_plugins: Mapped[str] = mapped_column(Text, default="[]")
     collect_path: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_collect_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_error: Mapped[str] = mapped_column(Text, default="")
     last_resource_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_resource_error: Mapped[str] = mapped_column(Text, default="")
+    last_connect_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_connect_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_connect_error: Mapped[str] = mapped_column(Text, default="")
     note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -155,8 +160,13 @@ def init_db() -> None:
             ("plugins", "TEXT DEFAULT '[]'"),
             ("last_resource_at", "DATETIME"),
             ("last_resource_error", "TEXT DEFAULT ''"),
+            ("last_connect_ok", "INTEGER"),
+            ("last_connect_at", "DATETIME"),
+            ("last_connect_error", "TEXT DEFAULT ''"),
             ("note", "TEXT DEFAULT ''"),
             ("collect_path", "TEXT DEFAULT ''"),
+            ("log_plugins", "TEXT DEFAULT '[]'"),
+            ("custom_plugins", "TEXT DEFAULT '[]'"),
         ]
         with engine.begin() as conn:
             for column, ddl in added:

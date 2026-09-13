@@ -1,3 +1,5 @@
+import re
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -18,11 +20,16 @@ def test_health_and_dashboard_and_pipeline():
         assert reached.status_code == 200
         assert "10.20.30.40:8080" in reached.text
         assert "리소스 및 성능" in home.text
-        assert "로그 수집 대상 서버 (추후 고도화)" in home.text
-        assert "로그 분석 보고서 (추후 고도화)" in home.text
-        assert "리소스 및 성능 플러그인 (추후 고도화)" in home.text
-        assert "로그 분석 플러그인 (추후 고도화)" in home.text
-        assert "js-soon" in home.text
+        assert "로그 수집 대상 서버" in home.text
+        assert 'href="/servers/logs"' in home.text
+        assert 'href="/reports"' in home.text
+        assert "로그 분석 보고서" in home.text
+        assert "로그 분석 보고서 (추후 고도화)" not in home.text
+        assert "리소스 및 성능 플러그인" not in home.text
+        assert "리소스 및 성능 쉘 스크립트" in home.text
+        assert 'href="/plugins/logs"' in home.text
+        assert "로그 분석 플러그인 (추후 고도화)" not in home.text
+        assert "js-soon" not in home.text
 
         collected = client.post("/collect", follow_redirects=True)
         assert collected.status_code == 200
@@ -33,13 +40,32 @@ def test_health_and_dashboard_and_pipeline():
         assert body, "데모 로그에서 Finding이 나와야 합니다"
         plugins = {item["plugin"] for item in body}
         assert any(name.startswith("stage1.") for name in plugins)
-        assert "stage2.auth_failures" in plugins
-        assert "stage2.disk_full" in plugins
+        assert "stage1.auth_failures" in plugins
+        assert "stage1.disk_full" in plugins
+        detail_src = next(
+            (item for item in body if any(
+                len(str(line)) >= 8 and "events in 60s window" not in str(line)
+                for line in (item.get("sample_lines") or [])
+            )),
+            body[0],
+        )
+        detail = client.get(f"/findings/{detail_src['id']}")
+        assert detail.status_code == 200
+        assert "세부 에러 플러그인으로 만들기" in detail.text
+        from_finding = client.get(f"/plugins/new?stage=2&finding={detail_src['id']}")
+        assert from_finding.status_code == 200
+        assert "세부 에러" in from_finding.text
+        assert "phrases" in from_finding.text
+        assert "수집된 ERROR/WARN 줄" in from_finding.text or "찾을 문구" in from_finding.text
 
         reports_page = client.get("/reports")
         assert reports_page.status_code == 200
         assert "demo-local" in reports_page.text
         assert "선택 생성" in reports_page.text
+        assert "보고서 만들기" in reports_page.text
+        assert "보고서가 어떤 식으로 나올지" in reports_page.text
+        assert "보고서 형식" in reports_page.text
+        assert 'href="/servers/logs/' in reports_page.text
         assert 'id="reportFidget"' in reports_page.text
         assert "js-report-generate" in reports_page.text
         assert "guardian-report-fidget.js" in reports_page.text
@@ -75,14 +101,25 @@ def test_health_and_dashboard_and_pipeline():
         plugins_page = client.get("/plugins", follow_redirects=True)
         assert plugins_page.status_code == 200
         assert "리소스 및 성능 쉘 스크립트" in plugins_page.text
-        assert "리소스 및 성능 플러그인" in plugins_page.text
+        assert "리소스 및 성능 플러그인" not in plugins_page.text
         log_plugins = client.get("/plugins/logs")
         assert log_plugins.status_code == 200
-        assert "Stage 2" in log_plugins.text
+        assert "1단계" in log_plugins.text
+        assert "2단계" in log_plugins.text
+        assert "세부 에러" in log_plugins.text
+        assert "우리 시스템" not in log_plugins.text
+        assert "Nginx" in log_plugins.text
+        assert "Oracle" in log_plugins.text
         new_plugin = client.get("/plugins/new?stage=2&server=demo-local")
         assert new_plugin.status_code == 200
         assert "demo-local_rules" in new_plugin.text
         assert "demo-local 전용" in new_plugin.text
+        assert "찾을 오류 문구" in new_plugin.text
+        assert "찾을 문구" in new_plugin.text
+        assert "수집된 ERROR/WARN 줄" in new_plugin.text
+        assert "OutOfMemoryError" in new_plugin.text
+        assert "Deadlock detected" in new_plugin.text
+        assert "Too many open files" in new_plugin.text
         listed = client.get("/reports")
         assert "삭제" in listed.text
         assert "data-confirm=" in listed.text
@@ -90,8 +127,19 @@ def test_health_and_dashboard_and_pipeline():
         servers_page = client.get("/servers/logs")
         assert servers_page.status_code == 200
         assert "로그 수집 대상 서버" in servers_page.text
-        assert "수집 중인 서버" in servers_page.text
+        assert "등록한 서버" in servers_page.text
+        assert "서버 등록하기" in servers_page.text
+        assert "커넥션 상태" in servers_page.text
+        assert "/servers/logs/connect-all" in servers_page.text
+        assert "connection-status" in servers_page.text
         assert "정보" in servers_page.text
+        assert "수정" in servers_page.text
+        assert 'id="server-search"' in servers_page.text
+        assert "1단계 공통 시스템" in servers_page.text
+        assert "2단계 세부 에러 플러그인" in servers_page.text
+        assert "2단계 우리 시스템" not in servers_page.text
+        assert "EAI (Inzent)" in servers_page.text
+        assert "Nginx" in servers_page.text
         created = client.post(
             "/servers/logs",
             data={
@@ -104,6 +152,141 @@ def test_health_and_dashboard_and_pipeline():
         )
         assert created.status_code == 200
         assert "only-logs" in created.text
+        assert "only-logs 수정" in created.text
+        assert "공개키" in created.text
+        assert "시험 로그 넣기" in created.text
+        assert "세부 에러 플러그인 만들기" in created.text
+        assert "이 서버 보고서 만들기" in created.text
+        log_id = str(created.url).rstrip("/").rsplit("/", 2)[-2]
+        seeded = client.post(f"/servers/logs/{log_id}/seed-logs", follow_redirects=True)
+        assert seeded.status_code == 200
+        assert "GuardianTestLogs" in seeded.text or "시험 로그" in seeded.text
+        assert "disk.full" in seeded.text or "auth.failures" in seeded.text or "stage1." in seeded.text
+        plugins_page = client.get("/plugins/logs")
+        assert plugins_page.status_code == 200
+        assert "2단계" in plugins_page.text
+        assert "eai" in plugins_page.text
         filtered = client.get("/api/checkpoints?offset=0&limit=50&server_id=1")
         assert filtered.status_code == 200
         assert "items" in filtered.json()
+
+
+def test_custom_app_plugin_from_phrases_attaches_to_server():
+    from app.db import parse_json_list
+    from app.models import Server, SessionLocal
+    from app.plugins import editor as plugin_editor
+    from app.plugins.loader import load_manifests
+    from app.resource_collect import dump_plugins
+
+    name = "zz_order_app_test"
+
+    def cleanup() -> None:
+        try:
+            plugin_editor.delete_plugin(2, name)
+        except KeyError:
+            pass
+        db = SessionLocal()
+        try:
+            for server in db.query(Server).all():
+                for field in ("log_plugins", "custom_plugins"):
+                    current = parse_json_list(getattr(server, field, "") or "")
+                    cleaned = [item for item in current if item != name]
+                    if cleaned != current:
+                        setattr(server, field, dump_plugins(cleaned))
+            db.commit()
+        finally:
+            db.close()
+
+    cleanup()
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/plugins/new",
+                data={
+                    "stage": "2",
+                    "name": name,
+                    "label": "주문시스템",
+                    "phrases": "주문 타임아웃\nPAY-401",
+                    "sample_logs": "2026-09-13 10:00:00 ERROR [OrderService] 재고 부족",
+                    "bind_server": "demo-local",
+                },
+                follow_redirects=True,
+            )
+            assert created.status_code == 200
+            catalog = client.get("/plugins/logs")
+            assert catalog.status_code == 200
+            assert "주문시스템" in catalog.text
+            assert "세부 에러" in catalog.text
+            assert "우리 시스템" not in catalog.text
+            servers = client.get("/servers/logs")
+            assert "주문시스템" in servers.text
+            plugin = next(item for item in load_manifests() if item.name == name)
+            assert plugin.system == "custom"
+            patterns = [str(rule.get("pattern") or "") for rule in plugin.rules]
+            assert any(re.search(item, "주문 타임아웃") for item in patterns)
+            assert any(re.search(item, "PAY-401") for item in patterns)
+            assert any(re.search(item, "재고 부족") for item in patterns)
+        db = SessionLocal()
+        try:
+            demo = db.query(Server).filter(Server.name == "demo-local").one()
+            assert name in parse_json_list(demo.custom_plugins or "")
+        finally:
+            db.close()
+    finally:
+        cleanup()
+
+
+def test_plugin_from_picked_collected_line():
+    from app.db import parse_json_list
+    from app.models import Server, SessionLocal
+    from app.plugins import editor as plugin_editor
+    from app.plugins.loader import load_manifests
+    from app.resource_collect import dump_plugins
+
+    name = "zz_from_logs_test"
+    line = "2026-08-25 10:03:44 ERROR [worker] Connection refused to 10.0.0.12:5432"
+
+    def cleanup() -> None:
+        try:
+            plugin_editor.delete_plugin(2, name)
+        except KeyError:
+            pass
+        db = SessionLocal()
+        try:
+            for server in db.query(Server).all():
+                for field in ("log_plugins", "custom_plugins"):
+                    current = parse_json_list(getattr(server, field, "") or "")
+                    cleaned = [item for item in current if item != name]
+                    if cleaned != current:
+                        setattr(server, field, dump_plugins(cleaned))
+            db.commit()
+        finally:
+            db.close()
+
+    cleanup()
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/plugins/new",
+                data={
+                    "stage": "2",
+                    "name": name,
+                    "label": "워커앱",
+                    "picked_logs": line,
+                    "bind_server": "demo-local",
+                    "server_names": "demo-local",
+                },
+                follow_redirects=True,
+            )
+            assert created.status_code == 200
+            plugin = next(item for item in load_manifests() if item.name == name)
+            patterns = [str(rule.get("pattern") or "") for rule in plugin.rules]
+            assert any(re.search(item, "Connection refused to 10.0.0.12:5432") for item in patterns)
+        db = SessionLocal()
+        try:
+            demo = db.query(Server).filter(Server.name == "demo-local").one()
+            assert name in parse_json_list(demo.custom_plugins or "")
+        finally:
+            db.close()
+    finally:
+        cleanup()

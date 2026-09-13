@@ -2,68 +2,157 @@
 {% set title = "로그 수집 대상 서버" %}
 {% set heading = "로그 수집 대상 서버" %}
 {% block content %}
-<div class="card mb-4">
-  <div class="card-header">서버 추가</div>
-  <div class="card-body">
-    <p class="small text-muted mb-3">로그를 읽어 올 서버를 지정합니다. 리소스와 성능까지 보려면 리소스 및 성능 수집 대상 서버에서 등록하세요.</p>
-    <form method="post" action="/servers/logs" id="server-add-form">
-      <div class="row gx-3">
-        <div class="col-md-4 mb-3">
-          <label class="small mb-1" for="name">이름</label>
-          <input class="form-control" id="name" name="name" required placeholder="화면에서 구분할 이름">
-        </div>
-        <div class="col-md-4 mb-3">
-          <label class="small mb-1" for="collector_type">수집기</label>
-          <select class="form-select" id="collector_type" name="collector_type">
-            <option value="ssh">ssh</option>
-            <option value="local">local</option>
-          </select>
-        </div>
-        <div class="col-md-4 mb-3">
-          <label class="small mb-1" for="host">호스트</label>
-          <input class="form-control" id="host" name="host" placeholder="접속할 IP 또는 호스트명">
-        </div>
-        <div class="col-md-4 mb-3">
-          <label class="small mb-1" for="port">포트</label>
-          <input class="form-control" id="port" name="port" type="number" value="22">
-        </div>
-        <div class="col-md-4 mb-3">
-          <label class="small mb-1" for="username">SSH 사용자</label>
-          <input class="form-control" id="username" name="username" placeholder="SSH 로그인 계정">
-        </div>
-        <div class="col-md-4 mb-3">
-          <label class="small mb-1" for="key_path">키 경로</label>
-          <input class="form-control" id="key_path" name="key_path" placeholder="개인키 파일의 전체 경로">
-        </div>
-        <div class="col-12 mb-3" id="log-path-row">
-          <label class="small mb-1" for="log_paths">로그 경로 (줄바꿈 또는 쉼표)</label>
-          <textarea class="form-control" id="log_paths" name="log_paths" rows="3" placeholder="읽을 로그 파일 경로. 줄마다 하나. 일자·시간 패턴과 * 사용 가능"></textarea>
-          <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. SSH 비밀번호는 저장하지 않습니다.</div>
-        </div>
-      </div>
-      <button class="btn btn-primary" type="submit">등록</button>
-    </form>
-  </div>
-</div>
 
 <div class="card mb-4" id="collecting">
-  <div class="card-header">수집 중인 서버</div>
+  <div class="card-header d-flex align-items-center justify-content-between gap-3">
+    <span class="text-nowrap">등록한 서버</span>
+    <div class="flex-grow-1">
+      <input
+        class="form-control form-control-sm"
+        id="server-search"
+        type="search"
+        placeholder="이름, 대상, 로그 경로로 찾기"
+        autocomplete="off"
+      >
+    </div>
+    <button class="btn btn-sm btn-primary text-nowrap" type="button" data-bs-toggle="collapse" data-bs-target="#server-add" aria-expanded="{{ 'true' if open_add else 'false' }}" aria-controls="server-add">
+      서버 등록하기
+    </button>
+  </div>
+  <div class="collapse {% if open_add %}show{% endif %}" id="server-add">
+    <div class="card-body border-bottom">
+      <p class="small text-muted mb-3">
+        로그를 읽어 올 서버의 접속 정보를 넣습니다. 비밀번호는 암호화해서 보관하고, 개인키는 올리면 서버 안에만 둡니다.
+        리소스와 성능까지 보려면 리소스 및 성능 수집 대상 서버에서 같은 이름으로 등록하세요.
+      </p>
+      <form method="post" action="/servers/logs" enctype="multipart/form-data" id="server-add-form">
+        <div class="row gx-3">
+          <div class="col-md-4 mb-3">
+            <label class="small mb-1" for="name">이름</label>
+            <input class="form-control" id="name" name="name" required placeholder="화면에서 구분할 이름">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="small mb-1" for="host">호스트 (IP)</label>
+            <input class="form-control" id="host" name="host" placeholder="접속할 IP 또는 호스트명">
+          </div>
+          <div class="col-md-2 mb-3">
+            <label class="small mb-1" for="port">포트</label>
+            <input class="form-control" id="port" name="port" type="number" value="22">
+          </div>
+          <div class="col-md-2 mb-3">
+            <label class="small mb-1" for="collector_type">수집기</label>
+            <select class="form-select" id="collector_type" name="collector_type" data-picker>
+              <option value="ssh" data-desc="원격 서버에 붙어서 로그를 읽습니다">ssh</option>
+              <option value="local" data-desc="Guardian이 도는 이 서버에서 읽습니다">local</option>
+            </select>
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="small mb-1" for="username">계정</label>
+            <input class="form-control" id="username" name="username" placeholder="SSH 로그인 계정">
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="small mb-1" for="auth_type">인증 방식</label>
+            <select class="form-select auth-type" id="auth_type" name="auth_type" data-picker>
+              <option value="key" data-desc="키 파일을 올리거나 서버 안 경로를 씁니다">개인키 (id_rsa)</option>
+              <option value="password" data-desc="암호화해서 보관합니다">비밀번호</option>
+              <option value="agent" data-desc="ssh-agent나 기본 키에 맡깁니다">에이전트 / 기본 키</option>
+            </select>
+          </div>
+          <div class="col-md-4 mb-3 auth-password d-none">
+            <label class="small mb-1" for="password">비밀번호</label>
+            <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" placeholder="SSH 비밀번호">
+            <div class="form-text">암호화해서 보관하며 화면에는 다시 보이지 않습니다.</div>
+          </div>
+          <div class="col-md-4 mb-3 auth-key">
+            <label class="small mb-1" for="key_file">개인키 파일</label>
+            <input class="form-control" id="key_file" name="key_file" type="file">
+            <div class="form-text">올리면 이 서버만 그 키를 씁니다. 비우면 이 PC 공용 키를 쓰고, 공개키는 수정 화면에서 복사합니다.</div>
+          </div>
+          <div class="col-md-4 mb-3 auth-key">
+            <label class="small mb-1" for="key_path">또는 서버에 있는 키 경로</label>
+            <input class="form-control" id="key_path" name="key_path" placeholder="개인키 파일의 전체 경로">
+          </div>
+          <div class="col-12 mb-3" id="log-path-row">
+            <label class="small mb-1" for="log_paths">로그 경로 (줄바꿈 또는 쉼표)</label>
+            <textarea class="form-control" id="log_paths" name="log_paths" rows="3" placeholder="읽을 로그 파일 경로. 줄마다 하나. 일자·시간 패턴과 * 사용 가능"></textarea>
+            <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. 리눅스 시험은 수정 화면에서 "시험 로그 넣기"로 <code>$HOME/GuardianTestLogs/</code> 에 임시 파일을 만듭니다.</div>
+          </div>
+          {% set pick_id = "add-s1" %}
+          {% set pick_title = "1단계 공통 시스템" %}
+          {% set pick_help = "WAS, Spring Boot, Oracle, PostgreSQL처럼 여러 곳이 같이 쓰는 로그를 고릅니다. 고른 것만 1차로 걸러줍니다. ERROR 집계·로그인 실패·디스크 부족은 항상 적용됩니다." %}
+          {% set pick_name = "log_plugins" %}
+          {% set pick_groups = catalog_groups %}
+          {% set pick_chosen = chosen_log_plugins %}
+          {% set pick_empty = "등록된 공통 시스템이 없습니다." %}
+          {% include "_log_plugin_picks.html" %}
+          {% set pick_id = "add-s2" %}
+          {% set pick_title = "2단계 세부 에러 플러그인" %}
+          {% set pick_help = "세션 만료·메모리 부족·교착처럼 이 서버에서만 볼 오류를 고릅니다. 플러그인은 로그 분석 플러그인에서 만들고, 여기서 적용합니다." %}
+          {% set pick_name = "stage2_plugins" %}
+          {% set pick_groups = custom_groups %}
+          {% set pick_chosen = chosen_custom_plugins %}
+          {% set pick_empty = "아직 세부 에러 플러그인이 없습니다. 로그 분석 플러그인에서 만든 뒤 여기서 고르세요." %}
+          {% include "_log_plugin_picks.html" %}
+          <div class="col-md-6 mb-3">
+            <label class="small mb-1" for="note">비고</label>
+            <input class="form-control" id="note" name="note" placeholder="운영 시 참고할 메모">
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit">등록</button>
+        <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#server-add">닫기</button>
+      </form>
+    </div>
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0 align-middle">
         <thead>
-          <tr><th>이름</th><th>대상</th><th>마지막 수집</th><th class="text-end">동작</th></tr>
+          <tr>
+            <th>이름</th>
+            <th>대상</th>
+            {% set connect_all_path = "/servers/logs/connect-all" %}
+            {% include "_connection_col_head.html" %}
+            <th>인증</th>
+            <th>1·2단계</th>
+            <th>로그 경로</th>
+            <th>마지막 수집</th>
+            <th class="text-end">동작</th>
+          </tr>
         </thead>
         <tbody>
         {% for server in servers %}
-          <tr>
+          {% set paths = log_paths_map.get(server.id) or [] %}
+          {% set picked = (log_plugin_map.get(server.id) or []) + (custom_plugin_map.get(server.id) or []) %}
+          {% set target = (server.username + "@" if server.username else "") + (server.host or "-") + (":" ~ server.port if server.port else "") %}
+          <tr class="resource-server-row" data-search="{{ [server.name, target, server.collector_type, server.note, server.auth_type, picked | join(' '), paths | join(' ')] | join(' ') }}">
             <td>
-              {{ server.name }}
+              <span class="fw-semibold">{{ server.name }}</span>
               {% if not server.enabled %}<span class="badge bg-light text-muted">off</span>{% endif %}
               {% if server.collect_resources %}<span class="badge bg-success-soft text-success">리소스도 봄</span>{% endif %}
+              {% if server.note %}<div class="small text-muted">{{ server.note }}</div>{% endif %}
             </td>
-            <td>{{ server.username + "@" if server.username else "" }}{{ server.host or "-" }}{% if server.port %}:{{ server.port }}{% endif %}</td>
-            <td>{{ server.last_collect_at | ts }}</td>
+            <td class="small">
+              {{ server.username + "@" if server.username else "" }}{{ server.host or "-" }}{% if server.port %}:{{ server.port }}{% endif %}
+              <div class="text-muted">{{ server.collector_type }}</div>
+            </td>
+            {% set next_path = "/servers/logs" %}
+            {% include "_connection_status.html" %}
+            <td class="small">
+              {% if server.auth_type == "password" %}비밀번호
+              {% elif server.auth_type == "agent" %}에이전트
+              {% else %}개인키{% endif %}
+            </td>
+            <td class="small">
+              {% if picked %}
+                {% for name in picked %}{{ log_plugin_labels.get(name, name) }}{% if not loop.last %}, {% endif %}{% endfor %}
+              {% else %}<span class="text-muted">이름 패턴</span>{% endif %}
+            </td>
+            <td class="small">
+              {% if paths %}
+              <span class="text-truncate d-inline-block" style="max-width: 16rem;" title="{{ paths | join('\n') }}">{{ paths | join(", ") }}</span>
+              {% else %}<span class="text-muted">없음</span>{% endif %}
+            </td>
+            <td class="small">{{ server.last_collect_at | ts }}</td>
             <td class="text-nowrap text-end">
               <div class="d-flex justify-content-end gap-1">
                 <form method="post" action="/servers/{{ server.id }}/collect">
@@ -86,12 +175,16 @@
                   data-server-logs="1"
                   data-server-resources="{{ '1' if server.collect_resources else '0' }}"
                 >정보</button>
+                <a class="btn btn-sm btn-outline-secondary" href="/servers/logs/{{ server.id }}/edit">수정</a>
               </div>
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="4" class="text-muted p-4">아직 등록한 서버가 없습니다.</td></tr>
+          <tr><td colspan="8" class="text-muted p-4">아직 등록한 서버가 없습니다. 오른쪽 위 서버 등록하기를 눌러 접속 정보를 넣으세요.</td></tr>
         {% endfor %}
+          <tr id="server-search-empty" class="d-none">
+            <td colspan="8" class="p-4 text-muted">조건에 맞는 서버가 없습니다.</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -126,4 +219,5 @@
 {% endblock %}
 {% block scripts %}
 <script src="/static/js/guardian-cursors.js"></script>
+<script src="/static/js/guardian-server-form.js"></script>
 {% endblock %}

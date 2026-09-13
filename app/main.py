@@ -40,7 +40,13 @@ from app.resources import (
 )
 from app.plugins import editor as plugin_editor
 from app.plugins.loader import load_manifests, read_script as plugin_script
-from app.plugins.runtime import assigned_plugins
+from app.plugins.runtime import (
+    assigned_plugins,
+    catalog_plugins,
+    custom_plugins,
+    grouped_catalog_plugins,
+    grouped_custom_plugins,
+)
 from app.pipeline.runner import collect_and_analyze
 from app.scheduler import shutdown_scheduler, start_scheduler
 from app.seed import seed_demo
@@ -56,11 +62,21 @@ from app.resource_collect import (
     collect_server,
     dump_plugins,
     plugin_for_server,
+    record_connection,
     render_script,
     resource_plugins,
     test_connection,
 )
-from app.secrets_store import delete_key, encrypt, key_label, save_key
+from app.log_seed import seed_test_logs
+from app.secrets_store import (
+    delete_key,
+    encrypt,
+    ensure_ssh_key,
+    generate_ssh_key,
+    key_label,
+    public_key_from_path,
+    save_key,
+)
 from app.server_modes import (
     get_modes,
     migrate_from_file as migrate_modes_from_file,
@@ -91,6 +107,7 @@ async def lifespan(_: FastAPI):
     db = SessionLocal()
     try:
         seed_demo(db)
+        migrate_plugin_assignments(db)
         if os.environ.get("GUARDIAN_TESTING") != "1":
             collect_and_analyze(db)
     finally:
@@ -213,6 +230,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "reports": len(log_reports),
         "resource_reports": len(resource_reports),
         "resource_attention": resource_attention,
+        "log_servers": len(_log_servers(db)),
     }
     return templates.TemplateResponse(
         request,
@@ -234,64 +252,200 @@ def servers_root():
     return RedirectResponse("/servers/resources", status_code=307)
 
 
-@app.get("/servers/logs", response_class=HTMLResponse)
-def servers_logs_page(request: Request, db: Session = Depends(get_db)):
-    servers = [item for item in db.query(Server).order_by(Server.name).all() if item.collect_logs]
+def _log_servers(db: Session) -> list[Server]:
+    return [
+        item
+        for item in db.query(Server).order_by(Server.name).all()
+        if item.collect_logs
+    ]
+
+
+def _log_page_ctx(request: Request, db: Session, **extra):
+    from app.plugins.runtime import catalog_plugins, custom_plugins, grouped_catalog_plugins, grouped_custom_plugins
+
+    servers = _log_servers(db)
     modes = {item.name: get_modes(item.name) for item in servers}
+    labels = {item.name: (item.label or item.system_label) for item in catalog_plugins() + custom_plugins()}
+    payload = {
+        "servers": servers,
+        "server_modes": modes,
+        "log_paths_map": {item.id: parse_json_list(item.log_paths) for item in servers},
+        "catalog_groups": grouped_catalog_plugins(),
+        "custom_groups": grouped_custom_plugins(),
+        "log_plugin_groups": grouped_catalog_plugins(),
+        "log_plugin_labels": labels,
+        "log_plugin_map": {
+            item.id: parse_json_list(getattr(item, "log_plugins", "") or "") for item in servers
+        },
+        "custom_plugin_map": {
+            item.id: parse_json_list(getattr(item, "custom_plugins", "") or "") for item in servers
+        },
+        "chosen_log_plugins": [],
+        "chosen_custom_plugins": [],
+        "open_add": False,
+        "error": "",
+        "notice": "",
+    }
+    payload.update(extra)
+    return _ctx(request, **payload)
+
+
+def _log_server(db: Session, server_id: int) -> Server:
+    server = db.get(Server, server_id)
+    if not server or not server.collect_logs:
+        raise HTTPException(404)
+    return server
+
+
+def _log_edit_ctx(request: Request, db: Session, server: Server, **extra):
+    from app.plugins.loader import load_manifests, targets_match
+    from app.plugins.runtime import catalog_plugins, custom_plugins, grouped_catalog_plugins, grouped_custom_plugins
+
+    findings = (
+        db.query(Finding)
+        .filter(Finding.server_id == server.id)
+        .order_by(Finding.updated_at.desc())
+        .limit(12)
+        .all()
+    )
+    reports = [
+        item
+        for item in db.query(Report).order_by(Report.created_at.desc()).all()
+        if not is_resource_plugin(item.plugin) and _log_report_server(item.plugin) == server.name
+    ][:7]
+    chosen = parse_json_list(getattr(server, "log_plugins", "") or "")
+    chosen_custom = parse_json_list(getattr(server, "custom_plugins", "") or "")
+    catalogs = catalog_plugins()
+    customs = custom_plugins()
+    if chosen:
+        applied = [item for item in catalogs if item.name in chosen]
+    else:
+        applied = [item for item in catalogs if targets_match(item, server.name)]
+    if chosen_custom:
+        applied.extend(item for item in customs if item.name in chosen_custom)
+    else:
+        applied.extend(item for item in customs if targets_match(item, server.name))
+    reports_plugins = [
+        item
+        for item in load_manifests()
+        if item.enabled and item.stage == 3 and targets_match(item, server.name)
+    ]
+    return _ctx(
+        request,
+        server=server,
+        log_paths_text="\n".join(parse_json_list(server.log_paths)),
+        key_label=key_label(server.key_path),
+        public_key=_ssh_public_key(server),
+        findings=findings,
+        server_reports=reports,
+        catalog_groups=grouped_catalog_plugins(),
+        custom_groups=grouped_custom_plugins(),
+        log_plugin_groups=grouped_catalog_plugins(),
+        chosen_log_plugins=chosen,
+        chosen_custom_plugins=chosen_custom,
+        applied_plugins=applied + reports_plugins,
+        **extra,
+    )
+
+
+def _log_report_server(plugin: str) -> str:
+    text = plugin or ""
+    if ":" in text:
+        return text.rsplit(":", 1)[-1]
+    return ""
+
+
+@app.get("/servers/logs", response_class=HTMLResponse)
+def servers_logs_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    notice: str = "",
+    error: str = "",
+):
     return templates.TemplateResponse(
         request,
         "servers.html",
-        _ctx(request, servers=servers, server_modes=modes, error=""),
+        _log_page_ctx(request, db, notice=notice, error=error),
     )
 
 
 @app.post("/servers/logs")
-def create_log_server(
+async def create_log_server(
     request: Request,
     name: str = Form(...),
     collector_type: str = Form("ssh"),
     host: str = Form(""),
     port: int = Form(22),
     username: str = Form(""),
+    auth_type: str = Form("key"),
+    password: str = Form(""),
     key_path: str = Form(""),
+    note: str = Form(""),
     log_paths: str = Form(""),
+    log_plugins: list[str] = Form(default=[]),
+    stage2_plugins: list[str] = Form(default=[]),
+    key_file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
 ):
-    servers = [item for item in db.query(Server).order_by(Server.name).all() if item.collect_logs]
-    modes = {item.name: get_modes(item.name) for item in servers}
     try:
         clean = name.strip()
         if not clean:
             raise ValueError("서버 이름을 넣어 주세요.")
         exists = db.query(Server).filter(Server.name == clean).one_or_none()
         paths = [item.strip() for item in log_paths.replace(",", "\n").splitlines() if item.strip()]
+        picked = dump_plugins(log_plugins)
+        picked_custom = dump_plugins(stage2_plugins)
         if exists:
-            # 리소스 쪽에 이미 있는 서버면 로그 수집만 켜 준다.
+            # 리소스 쪽에 이미 있는 서버면 접속 정보는 그대로 두고 로그 수집만 켠다.
             exists.collect_logs = True
             exists.log_paths = dump_json(paths) if paths else exists.log_paths
+            if note.strip():
+                exists.note = note.strip()
+            if log_plugins:
+                exists.log_plugins = picked
+            if stage2_plugins:
+                exists.custom_plugins = picked_custom
             db.commit()
-        else:
-            server = Server(
-                name=clean,
-                collector_type=collector_type,
-                host=host.strip(),
-                port=port,
-                username=username.strip(),
-                key_path=key_path.strip(),
-                log_paths=dump_json(paths),
-                collect_logs=True,
-                collect_resources=False,
-                enabled=True,
-            )
-            db.add(server)
-            db.commit()
+            return RedirectResponse("/servers/logs#collecting", status_code=303)
+        auth_type = (auth_type or "key").strip() or "key"
+        if auth_type not in {"key", "password", "agent"}:
+            auth_type = "key"
+        stored_key, made_key = await _store_key(
+            clean, auth_type, key_file, key_path, make_if_missing=True
+        )
+        server = Server(
+            name=clean,
+            collector_type=collector_type,
+            host=host.strip(),
+            port=port,
+            username=username.strip(),
+            auth_type=auth_type,
+            password_enc=encrypt(password) if auth_type == "password" else "",
+            key_path=stored_key,
+            log_paths=dump_json(paths),
+            log_plugins=picked,
+            custom_plugins=picked_custom,
+            collect_logs=True,
+            collect_resources=False,
+            note=note.strip(),
+            enabled=True,
+        )
+        db.add(server)
+        db.commit()
+        db.refresh(server)
     except ValueError as exc:
         return templates.TemplateResponse(
             request,
             "servers.html",
-            _ctx(request, servers=servers, server_modes=modes, error=str(exc)),
+            _log_page_ctx(request, db, error=str(exc), open_add=True),
             status_code=400,
         )
+    if auth_type == "key":
+        if made_key:
+            notice = quote("이 PC 공용 키를 만들었습니다. 같은 공개키를 상대 서버 authorized_keys 에 넣으세요.")
+        else:
+            notice = quote("공개키를 복사해 상대 서버 authorized_keys 에 넣으세요.")
+        return RedirectResponse(f"/servers/logs/{server.id}/edit?notice={notice}", status_code=303)
     return RedirectResponse("/servers/logs#collecting", status_code=303)
 
 
@@ -333,7 +487,9 @@ async def create_resource_server(
             raise ValueError("서버 이름을 넣어 주세요.")
         if db.query(Server).filter(Server.name == clean).one_or_none():
             raise ValueError(f"이미 있는 이름입니다: {clean}")
-        stored_key = await _store_key(clean, auth_type, key_file, key_path)
+        stored_key, made_key = await _store_key(
+            clean, auth_type, key_file, key_path, make_if_missing=True
+        )
         server = Server(
             name=clean,
             collector_type=collector_type,
@@ -354,6 +510,7 @@ async def create_resource_server(
         )
         db.add(server)
         db.commit()
+        db.refresh(server)
     except ValueError as exc:
         return templates.TemplateResponse(
             request,
@@ -361,6 +518,12 @@ async def create_resource_server(
             _resources_page_ctx(request, db, error=str(exc), open_add=True),
             status_code=400,
         )
+    if auth_type == "key":
+        if made_key:
+            notice = quote("이 PC 공용 키를 만들었습니다. 같은 공개키를 상대 서버 authorized_keys 에 넣으세요.")
+        else:
+            notice = quote("공개키를 복사해 상대 서버 authorized_keys 에 넣으세요.")
+        return RedirectResponse(f"/servers/resources/{server.id}/edit?notice={notice}", status_code=303)
     return RedirectResponse("/servers/resources#collecting", status_code=303)
 
 
@@ -374,12 +537,74 @@ def _clean_names(items: list[str]) -> list[str]:
     return cleaned
 
 
-async def _store_key(server_name: str, auth_type: str, upload: UploadFile | None, typed_path: str) -> str:
+async def _store_key(
+    server_name: str,
+    auth_type: str,
+    upload: UploadFile | None,
+    typed_path: str,
+    *,
+    make_if_missing: bool = False,
+) -> tuple[str, bool]:
     if auth_type != "key":
-        return ""
+        return "", False
     if upload is not None and (upload.filename or "").strip():
-        return save_key(server_name, await upload.read())
-    return (typed_path or "").strip()
+        body = await upload.read()
+        if body.strip():
+            return save_key(server_name, body), False
+    typed = (typed_path or "").strip()
+    if typed:
+        return typed, False
+    if make_if_missing:
+        return ensure_ssh_key()
+    return "", False
+
+
+async def _apply_auth(
+    server: Server,
+    auth_type: str,
+    password: str,
+    key_path: str,
+    key_file: UploadFile | None,
+) -> None:
+    previous_key = server.key_path
+    previous_auth = (server.auth_type or "key").strip() or "key"
+    auth_type = (auth_type or "").strip() or previous_auth
+    if auth_type not in {"key", "password", "agent"}:
+        auth_type = previous_auth
+    server.auth_type = auth_type
+    if auth_type == "key":
+        stored, _made = await _store_key(server.name, auth_type, key_file, key_path or previous_key)
+        server.key_path = stored or previous_key
+        if not server.key_path:
+            stored, _made = await _store_key(server.name, "key", None, "", make_if_missing=True)
+            server.key_path = stored
+        server.password_enc = ""
+    elif auth_type == "password":
+        if password.strip():
+            server.password_enc = encrypt(password)
+        server.key_path = ""
+        if previous_key:
+            delete_key(previous_key)
+    else:
+        server.password_enc = ""
+        server.key_path = ""
+
+
+def _set_shared_key(db: Session, server: Server) -> None:
+    previous = server.key_path
+    path = generate_ssh_key()
+    server.auth_type = "key"
+    server.key_path = path
+    server.password_enc = ""
+    if previous and previous != path:
+        delete_key(previous)
+    db.commit()
+
+
+def _ssh_public_key(server: Server) -> str:
+    if (server.auth_type or "key") != "key":
+        return ""
+    return public_key_from_path(server.key_path, comment="guardian")
 
 
 @app.get("/servers/resources/{server_id}/edit", response_class=HTMLResponse)
@@ -408,6 +633,7 @@ def resource_server_edit(
             script_plugin=manifest.name if manifest else "",
             script_text=plugin_script(manifest) if manifest else "",
             key_label=key_label(server.key_path),
+            public_key=_ssh_public_key(server),
             recent=recent,
             tested=tested,
             error=error,
@@ -444,23 +670,19 @@ async def resource_server_save(
     server.collect_path = collect_path.strip()
     server.collect_resources = True
     server.plugins = dump_plugins(plugins)
-    previous_key = server.key_path
-    server.auth_type = auth_type
-    if auth_type == "key":
-        stored = await _store_key(server.name, auth_type, key_file, key_path or previous_key)
-        server.key_path = stored
-        server.password_enc = ""
-    elif auth_type == "password":
-        if password.strip():
-            server.password_enc = encrypt(password)
-        server.key_path = ""
-        if previous_key:
-            delete_key(previous_key)
-    else:
-        server.password_enc = ""
-        server.key_path = ""
+    await _apply_auth(server, auth_type, password, key_path, key_file)
     db.commit()
     return RedirectResponse(f"/servers/resources/{server_id}/edit", status_code=303)
+
+
+@app.post("/servers/resources/{server_id}/make-key")
+def resource_server_make_key(server_id: int, db: Session = Depends(get_db)):
+    server = db.get(Server, server_id)
+    if not server:
+        raise HTTPException(404)
+    _set_shared_key(db, server)
+    notice = quote("이 PC 공용 키를 새로 만들었습니다. 같은 공개키를 상대 서버 authorized_keys 에 넣으세요.")
+    return RedirectResponse(f"/servers/resources/{server_id}/edit?notice={notice}", status_code=303)
 
 
 @app.post("/servers/resources/{server_id}/delete")
@@ -478,6 +700,129 @@ def resource_server_delete(server_id: int, db: Session = Depends(get_db)):
         db.delete(server)
         db.commit()
     return RedirectResponse("/servers/resources#collecting", status_code=303)
+
+
+@app.get("/servers/logs/{server_id}/edit", response_class=HTMLResponse)
+def log_server_edit(
+    server_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    tested: str = "",
+    error: str = "",
+    notice: str = "",
+):
+    server = _log_server(db, server_id)
+    return templates.TemplateResponse(
+        request,
+        "server_log_edit.html",
+        _log_edit_ctx(request, db, server, tested=tested, error=error, notice=notice),
+    )
+
+
+@app.post("/servers/logs/{server_id}/edit", response_class=HTMLResponse)
+async def log_server_save(
+    server_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    host: str = Form(""),
+    port: int = Form(22),
+    username: str = Form(""),
+    collector_type: str = Form("ssh"),
+    auth_type: str = Form("key"),
+    password: str = Form(""),
+    key_path: str = Form(""),
+    note: str = Form(""),
+    log_paths: str = Form(""),
+    log_plugins: list[str] = Form(default=[]),
+    stage2_plugins: list[str] = Form(default=[]),
+    key_file: UploadFile | None = File(default=None),
+):
+    server = _log_server(db, server_id)
+    server.host = host.strip()
+    server.port = port
+    server.username = username.strip()
+    server.collector_type = collector_type
+    server.note = note.strip()
+    server.collect_logs = True
+    paths = [item.strip() for item in log_paths.replace(",", "\n").splitlines() if item.strip()]
+    server.log_paths = dump_json(paths)
+    server.log_plugins = dump_plugins(log_plugins)
+    server.custom_plugins = dump_plugins(stage2_plugins)
+    await _apply_auth(server, auth_type, password, key_path, key_file)
+    db.commit()
+    return RedirectResponse(f"/servers/logs/{server_id}/edit", status_code=303)
+
+
+@app.post("/servers/logs/{server_id}/make-key")
+def log_server_make_key(server_id: int, db: Session = Depends(get_db)):
+    server = _log_server(db, server_id)
+    _set_shared_key(db, server)
+    notice = quote("이 PC 공용 키를 새로 만들었습니다. 같은 공개키를 상대 서버 authorized_keys 에 넣으세요.")
+    return RedirectResponse(f"/servers/logs/{server_id}/edit?notice={notice}", status_code=303)
+
+
+@app.post("/servers/logs/{server_id}/delete")
+def log_server_delete(server_id: int, db: Session = Depends(get_db)):
+    server = _log_server(db, server_id)
+    if server.collect_resources:
+        server.collect_logs = False
+        db.commit()
+    else:
+        if server.key_path:
+            delete_key(server.key_path)
+        db.delete(server)
+        db.commit()
+    return RedirectResponse("/servers/logs#collecting", status_code=303)
+
+
+@app.post("/servers/logs/{server_id}/test")
+def log_server_test(server_id: int, db: Session = Depends(get_db)):
+    server = _log_server(db, server_id)
+    try:
+        record_connection(db, server)
+        result = quote(test_connection(server)[:400])
+        return RedirectResponse(f"/servers/logs/{server_id}/edit?tested={result}", status_code=303)
+    except Exception as exc:  # noqa: BLE001 — 접속 실패 사유를 보여 준다
+        server.last_connect_ok = False
+        server.last_connect_at = datetime.utcnow()
+        server.last_connect_error = str(exc)[:400]
+        db.commit()
+        return RedirectResponse(
+            f"/servers/logs/{server_id}/edit?error={quote(str(exc)[:400])}", status_code=303
+        )
+
+
+@app.post("/servers/logs/{server_id}/clear-error")
+def log_server_clear_error(server_id: int, db: Session = Depends(get_db)):
+    server = _log_server(db, server_id)
+    server.last_error = ""
+    db.commit()
+    return RedirectResponse(f"/servers/logs/{server_id}/edit", status_code=303)
+
+
+@app.post("/servers/logs/{server_id}/seed-logs")
+def log_server_seed_logs(server_id: int, db: Session = Depends(get_db)):
+    server = _log_server(db, server_id)
+    try:
+        path = seed_test_logs(server)
+        db.commit()
+        run = collect_and_analyze(db, server_ids=[server.id])
+        if run.error:
+            return RedirectResponse(
+                f"/servers/logs/{server_id}/edit?error={quote(run.error[:400])}",
+                status_code=303,
+            )
+    except Exception as exc:  # noqa: BLE001 — 사유를 수정 화면에 보여 준다
+        db.rollback()
+        server = _log_server(db, server_id)
+        server.last_error = str(exc)[:500]
+        db.commit()
+        return RedirectResponse(
+            f"/servers/logs/{server_id}/edit?error={quote(str(exc)[:400])}",
+            status_code=303,
+        )
+    notice = quote(f"시험 로그를 {path} 에 넣고 수집했습니다.")
+    return RedirectResponse(f"/servers/logs/{server_id}/edit?notice={notice}", status_code=303)
 
 
 @app.post("/servers/resources/{server_id}/collect", response_class=HTMLResponse)
@@ -502,14 +847,72 @@ def resource_server_test(server_id: int, db: Session = Depends(get_db)):
     if not server:
         raise HTTPException(404)
     try:
+        record_connection(db, server)
         result = quote(test_connection(server)[:400])
         return RedirectResponse(
             f"/servers/resources/{server_id}/edit?tested={result}", status_code=303
         )
     except Exception as exc:  # noqa: BLE001 — 접속 실패 사유를 보여 준다
+        server.last_connect_ok = False
+        server.last_connect_at = datetime.utcnow()
+        server.last_connect_error = str(exc)[:400]
+        db.commit()
         return RedirectResponse(
             f"/servers/resources/{server_id}/edit?error={quote(str(exc)[:400])}", status_code=303
         )
+
+
+def _servers_next(raw: str, fallback: str) -> str:
+    text = (raw or "").strip()
+    if text.startswith("/servers"):
+        return text.split("#", 1)[0].split("?", 1)[0]
+    return fallback
+
+
+def _connect_many(db: Session, servers: list[Server]) -> tuple[int, int]:
+    ok_n = 0
+    fail_n = 0
+    for item in servers:
+        ok, _detail = record_connection(db, item)
+        if ok:
+            ok_n += 1
+        else:
+            fail_n += 1
+    return ok_n, fail_n
+
+
+@app.post("/servers/resources/connect-all")
+def resource_connect_all(db: Session = Depends(get_db)):
+    ok_n, fail_n = _connect_many(db, _resource_servers(db))
+    notice = quote(f"{ok_n} connection · {fail_n} disconnection")
+    return RedirectResponse(f"/servers/resources?notice={notice}#collecting", status_code=303)
+
+
+@app.post("/servers/logs/connect-all")
+def log_connect_all(db: Session = Depends(get_db)):
+    ok_n, fail_n = _connect_many(db, _log_servers(db))
+    notice = quote(f"{ok_n} connection · {fail_n} disconnection")
+    return RedirectResponse(f"/servers/logs?notice={notice}#collecting", status_code=303)
+
+
+@app.post("/servers/{server_id}/connect")
+def server_connect(
+    server_id: int,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    server = db.get(Server, server_id)
+    if not server:
+        raise HTTPException(404)
+    dest = _servers_next(next, "/servers/resources" if server.collect_resources else "/servers/logs")
+    ok, detail = record_connection(db, server)
+    if ok:
+        notice = quote(f"{server.name} connection")
+        return RedirectResponse(f"{dest}?notice={notice}#collecting", status_code=303)
+    return RedirectResponse(
+        f"{dest}?error={quote(f'{server.name} disconnection: {detail}')}#collecting",
+        status_code=303,
+    )
 
 
 @app.post("/servers/resources/{server_id}/clear-error")
@@ -756,10 +1159,26 @@ def reports_page(request: Request, db: Session = Depends(get_db)):
         for item in db.query(Server).filter(Server.enabled.is_(True)).order_by(Server.name).all()
         if get_modes(item.name)["logs"]
     ]
+    finding_counts: dict[int, int] = {}
+    for (server_id,) in db.query(Finding.server_id).all():
+        finding_counts[server_id] = finding_counts.get(server_id, 0) + 1
+    latest: dict[str, Report] = {}
+    for item in items:
+        name = _log_report_server(item.plugin)
+        if name and name not in latest:
+            latest[name] = item
+    report_rows = [
+        {
+            "server": server,
+            "findings": finding_counts.get(server.id, 0),
+            "latest": latest.get(server.name),
+        }
+        for server in enabled_servers
+    ]
     return templates.TemplateResponse(
         request,
         "reports.html",
-        _ctx(request, reports=items, enabled_servers=enabled_servers),
+        _ctx(request, reports=items, enabled_servers=enabled_servers, report_rows=report_rows),
     )
 
 
@@ -921,6 +1340,117 @@ def _form_targets(
     return names + extra or (["*"] if not bound else [bound])
 
 
+def _is_usable_log_line(line: str) -> bool:
+    text = (line or "").strip()
+    if len(text) < 8:
+        return False
+    if "events in 60s window" in text:
+        return False
+    return True
+
+
+def _collected_error_lines(
+    db: Session,
+    *,
+    server: Server | None,
+    finding: Finding | None = None,
+    limit: int = 40,
+) -> list[str]:
+    lines: list[str] = []
+    seen: set[str] = set()
+
+    def add_samples(raw: str) -> None:
+        for item in parse_json_list(raw):
+            text = str(item or "").strip()
+            if not _is_usable_log_line(text) or text in seen:
+                continue
+            seen.add(text)
+            lines.append(text)
+
+    if finding:
+        add_samples(finding.sample_lines)
+        return lines[:limit]
+    if not server:
+        return []
+    rows = (
+        db.query(Finding)
+        .filter(Finding.server_id == server.id, Finding.severity.in_(["error", "warn"]))
+        .order_by(Finding.updated_at.desc())
+        .limit(80)
+        .all()
+    )
+    for row in rows:
+        add_samples(row.sample_lines)
+        if len(lines) >= limit:
+            break
+    return lines[:limit]
+
+
+def _bind_server_row(db: Session, name: str) -> Server | None:
+    text = (name or "").strip()
+    if not text:
+        return None
+    return db.query(Server).filter(Server.name == text).one_or_none()
+
+
+def migrate_plugin_assignments(db: Session) -> None:
+    catalogs = {item.name for item in catalog_plugins(enabled_only=False)}
+    changed = False
+    for server in db.query(Server).all():
+        names = parse_json_list(getattr(server, "log_plugins", "") or "")
+        already_custom = parse_json_list(getattr(server, "custom_plugins", "") or "")
+        keep: list[str] = []
+        move: list[str] = []
+        for name in names:
+            if name in catalogs:
+                keep.append(name)
+            else:
+                move.append(name)
+        if not move:
+            continue
+        merged = list(already_custom)
+        for name in move:
+            if name not in merged:
+                merged.append(name)
+        server.custom_plugins = dump_plugins(merged)
+        server.log_plugins = dump_plugins(keep)
+        changed = True
+    if changed:
+        db.commit()
+
+
+def _attach_server_plugin(
+    db: Session,
+    plugin_name: str,
+    *,
+    targets: list[str],
+    servers: list[Server],
+    attach_all: bool = False,
+    field: str = "custom_plugins",
+    stage: int = 2,
+) -> None:
+    name = (plugin_name or "").strip()
+    if not name:
+        return
+    if attach_all or "*" in (targets or []):
+        if not attach_all:
+            return
+        chosen = list(servers)
+    else:
+        wanted = {item for item in (targets or []) if item}
+        chosen = [item for item in servers if item.name in wanted]
+    if not chosen:
+        return
+    for server in chosen:
+        current = parse_json_list(getattr(server, field, "") or "")
+        if not current:
+            current = [item.name for item in assigned_plugins(server.name, stage=stage)]
+        if name not in current:
+            current.append(name)
+        setattr(server, field, dump_plugins(current))
+    db.commit()
+
+
 @app.get("/plugins")
 def plugins_root():
     return RedirectResponse("/plugins/resources", status_code=307)
@@ -930,9 +1460,13 @@ def _plugins_page(request: Request, kind: str, **extra):
     items = load_manifests()
     payload = {
         "kind": kind,
+        "stage1": [item for item in items if item.stage == 1],
         "stage2": [item for item in items if item.stage == 2],
         "stage3": [item for item in items if item.stage == 3],
         "stage4": [item for item in items if item.stage == 4],
+        "catalog_groups": grouped_catalog_plugins(enabled_only=False) if kind == "logs" else [],
+        "custom_groups": grouped_custom_plugins(enabled_only=False) if kind == "logs" else [],
+        "log_plugin_groups": grouped_catalog_plugins(enabled_only=False) if kind == "logs" else [],
         "error": "",
         "form_name": "",
         "form_description": "",
@@ -975,15 +1509,27 @@ def _default_plugin_name(stage: int, bind: str) -> str:
 
 
 @app.get("/plugins/new", response_class=HTMLResponse)
-def plugin_new(request: Request, stage: int = 2, server: str = "", db: Session = Depends(get_db)):
-    if stage not in (2, 3, 4):
+def plugin_new(
+    request: Request,
+    stage: int = 2,
+    server: str = "",
+    finding: int = 0,
+    db: Session = Depends(get_db),
+):
+    if stage not in (1, 2, 3, 4):
         stage = 2
     servers = db.query(Server).order_by(Server.name).all()
     bind = server.strip()
+    source = db.get(Finding, finding) if finding else None
+    bind_row = _bind_server_row(db, bind)
+    if source and not bind_row:
+        bind_row = db.get(Server, source.server_id)
+        bind = bind_row.name if bind_row else bind
     base_script = ""
     if stage == 4:
         sample = ROOT / "plugins" / "stage4" / "resource_basic" / "collect.sh"
         base_script = sample.read_text(encoding="utf-8") if sample.exists() else ""
+    collected = _collected_error_lines(db, server=bind_row, finding=source) if stage == 2 else []
     return templates.TemplateResponse(
         request,
         "plugin_new.html",
@@ -995,6 +1541,8 @@ def plugin_new(request: Request, stage: int = 2, server: str = "", db: Session =
             bind_server=bind,
             default_name=_default_plugin_name(stage, bind),
             script=base_script,
+            collected_lines=collected,
+            from_finding=bool(source),
         ),
     )
 
@@ -1006,8 +1554,15 @@ def plugin_create(
     stage: int = Form(2),
     name: str = Form(...),
     description: str = Form(""),
+    system: str = Form(""),
+    system_label: str = Form(""),
+    label: str = Form(""),
+    phrases: str = Form(""),
+    sample_logs: str = Form(""),
+    picked_logs: list[str] = Form(default=[]),
     title: str = Form(""),
     mode: str = Form("all"),
+    intro: str = Form(""),
     all_servers: str = Form(""),
     server_names: list[str] = Form(default=[]),
     target_patterns: str = Form(""),
@@ -1024,7 +1579,7 @@ def plugin_create(
     bind = bind_server.strip()
     searches = clean_search_names(plugin_instances)
     try:
-        targets = _form_targets(all_servers or ("1" if stage == 4 and not bind else ""), server_names, target_patterns, bind)
+        targets = ["*"] if stage == 4 else []
         if stage == 4:
             body = script
             chosen = [item.strip() for item in modules if item.strip()]
@@ -1043,18 +1598,43 @@ def plugin_create(
             plugin_editor.create_report_plugin(
                 name.strip(),
                 description=description,
-                targets=targets,
-                title=title or (f"{bind} 일일 보고서" if bind else ""),
+                targets=["*"],
+                title=title or "로그 분석 보고서",
                 mode=mode,
+                intro=intro,
             )
         else:
-            rules = plugin_editor.clean_rules(rule_pattern, rule_severity, rule_signature, rule_min_count)
+            extra_rules = plugin_editor.clean_rules(rule_pattern, rule_severity, rule_signature, rule_min_count)
+            phrase_lines = [item.strip() for item in (phrases or "").splitlines() if item.strip()]
+            picked = [item.strip() for item in picked_logs if str(item).strip()]
+            sample_blob = "\n".join([item for item in [sample_logs, *picked] if str(item).strip()])
+            rules = plugin_editor.merge_rules(
+                plugin_editor.literal_rules(phrase_lines, name.strip()),
+                plugin_editor.rules_from_sample_logs(sample_blob, name.strip()),
+                extra_rules,
+            )
+            if not rules:
+                raise ValueError("찾을 오류 문구를 하나 이상 넣어 주세요.")
             plugin_editor.create_rules_plugin(
                 name.strip(),
                 description=description,
-                targets=targets,
+                targets=[],
                 rules=rules,
+                system=system,
+                system_label=system_label,
+                label=label,
+                stage=stage if stage in (1, 2) else 2,
             )
+            if bind:
+                _attach_server_plugin(
+                    db,
+                    name.strip(),
+                    targets=[bind],
+                    servers=servers,
+                    attach_all=False,
+                    field="log_plugins" if stage == 1 else "custom_plugins",
+                    stage=1 if stage == 1 else 2,
+                )
     except (ValueError, FileExistsError, KeyError) as exc:
         if stage == 4 and not bind:
             chosen = [item.strip() for item in modules if item.strip()] or default_modules()
@@ -1080,12 +1660,25 @@ def plugin_create(
                 bind_server=bind,
                 default_name=name.strip() or _default_plugin_name(stage, bind),
                 script=script,
+                form_label=label,
+                form_description=description,
+                form_phrases=phrases,
+                form_sample_logs=sample_logs,
+                form_system=system,
+                form_system_label=system_label,
+                collected_lines=_collected_error_lines(db, server=_bind_server_row(db, bind)) if stage == 2 else [],
+                from_finding=False,
             ),
             status_code=400,
         )
     if stage == 4:
         return RedirectResponse("/plugins/resources", status_code=303)
-    return RedirectResponse("/servers/logs" if bind else "/plugins/logs", status_code=303)
+    if bind:
+        row = _bind_server_row(db, bind)
+        if row and row.collect_logs:
+            return RedirectResponse(f"/servers/logs/{row.id}/edit", status_code=303)
+        return RedirectResponse("/servers/logs", status_code=303)
+    return RedirectResponse("/plugins/logs", status_code=303)
 
 
 def _preview_script(modules: list[str], instances: list[str], name: str) -> tuple[str, list[str], list[str], list[str]]:
@@ -1174,6 +1767,9 @@ def plugin_save(
     db: Session = Depends(get_db),
     enabled: str = Form(""),
     description: str = Form(""),
+    system: str = Form(""),
+    system_label: str = Form(""),
+    label: str = Form(""),
     all_servers: str = Form(""),
     server_names: list[str] = Form(default=[]),
     target_patterns: str = Form(""),
@@ -1191,7 +1787,7 @@ def plugin_save(
     servers = db.query(Server).order_by(Server.name).all()
     try:
         plugin = plugin_editor.get_manifest(stage, name)
-        targets = ["*"] if stage == 4 else _form_targets(all_servers, server_names, target_patterns)
+        targets = ["*"] if stage == 4 else list(plugin.targets or [])
         rules = None
         config = None
         body = script
@@ -1214,6 +1810,9 @@ def plugin_save(
             rules=rules,
             config=config,
             script=body if stage == 4 else None,
+            system=system,
+            system_label=system_label,
+            label=label,
         )
     except (ValueError, KeyError) as exc:
         plugin = plugin_editor.get_manifest(stage, name)

@@ -1,7 +1,10 @@
 name: disk_full
-stage: 2
+stage: 1
 version: "1.0"
 type: rules
+system: common
+system_label: 공통
+label: 디스크 가득 참
 description: 디스크 가득 참 메시지를 YAML 규칙으로 탐지합니다.
 targets: ["*"]
 rules:
