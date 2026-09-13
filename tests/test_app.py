@@ -51,10 +51,10 @@ def test_health_and_dashboard_and_pipeline():
         )
         detail = client.get(f"/findings/{detail_src['id']}")
         assert detail.status_code == 200
-        assert "세부 에러 플러그인으로 만들기" in detail.text
+        assert "2단계 세부 플러그인으로 만들기" in detail.text
         from_finding = client.get(f"/plugins/new?stage=2&finding={detail_src['id']}")
         assert from_finding.status_code == 200
-        assert "세부 에러" in from_finding.text
+        assert "2단계 세부 플러그인" in from_finding.text
         assert "phrases" in from_finding.text
         assert "수집된 ERROR/WARN 줄" in from_finding.text or "찾을 문구" in from_finding.text
 
@@ -64,7 +64,7 @@ def test_health_and_dashboard_and_pipeline():
         assert "선택 생성" in reports_page.text
         assert "보고서 만들기" in reports_page.text
         assert "보고서가 어떤 식으로 나올지" in reports_page.text
-        assert "보고서 형식" in reports_page.text
+        assert "3단계 로그 보고서 플러그인" in reports_page.text
         assert 'href="/servers/logs/' in reports_page.text
         assert 'id="reportFidget"' in reports_page.text
         assert "js-report-generate" in reports_page.text
@@ -106,7 +106,10 @@ def test_health_and_dashboard_and_pipeline():
         assert log_plugins.status_code == 200
         assert "1단계" in log_plugins.text
         assert "2단계" in log_plugins.text
-        assert "세부 에러" in log_plugins.text
+        assert "1단계 · 공통 플러그인" in log_plugins.text
+        assert "2단계 · 세부 플러그인" in log_plugins.text
+        assert "3단계 · 로그 보고서 플러그인" in log_plugins.text
+        assert "세부 에러" not in log_plugins.text
         assert "우리 시스템" not in log_plugins.text
         assert "Nginx" in log_plugins.text
         assert "Oracle" in log_plugins.text
@@ -135,8 +138,8 @@ def test_health_and_dashboard_and_pipeline():
         assert "정보" in servers_page.text
         assert "수정" in servers_page.text
         assert 'id="server-search"' in servers_page.text
-        assert "1단계 공통 시스템" in servers_page.text
-        assert "2단계 세부 에러 플러그인" in servers_page.text
+        assert "1단계 공통 플러그인" in servers_page.text
+        assert "2단계 세부 플러그인" in servers_page.text
         assert "2단계 우리 시스템" not in servers_page.text
         assert "EAI (Inzent)" in servers_page.text
         assert "Nginx" in servers_page.text
@@ -155,7 +158,7 @@ def test_health_and_dashboard_and_pipeline():
         assert "only-logs 수정" in created.text
         assert "공개키" in created.text
         assert "시험 로그 넣기" in created.text
-        assert "세부 에러 플러그인 만들기" in created.text
+        assert "2단계 세부 플러그인 만들기" in created.text
         assert "이 서버 보고서 만들기" in created.text
         log_id = str(created.url).rstrip("/").rsplit("/", 2)[-2]
         seeded = client.post(f"/servers/logs/{log_id}/seed-logs", follow_redirects=True)
@@ -216,7 +219,8 @@ def test_custom_app_plugin_from_phrases_attaches_to_server():
             catalog = client.get("/plugins/logs")
             assert catalog.status_code == 200
             assert "주문시스템" in catalog.text
-            assert "세부 에러" in catalog.text
+            assert "2단계 · 세부 플러그인" in catalog.text
+            assert "세부 에러" not in catalog.text
             assert "우리 시스템" not in catalog.text
             servers = client.get("/servers/logs")
             assert "주문시스템" in servers.text

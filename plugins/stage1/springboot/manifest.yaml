@@ -6,7 +6,7 @@ enabled: true
 system: app
 system_label: 애플리케이션
 label: Spring Boot
-description: Spring 기동 실패·커넥션풀 고갈 같은 프레임워크 로그. 세션 만료·힙 부족처럼 이 서버만의 오류는 2단계 세부 에러 플러그인에 넣습니다.
+description: Spring 기동 실패·커넥션풀 고갈 같은 프레임워크 로그. 세션 만료·힙 부족처럼 이 서버만의 오류는 2단계 세부 플러그인에 넣습니다.
 targets: ["spring-.*", "boot-.*", "app-.*"]
 rules:
   - pattern: "APPLICATION FAILED TO START|Error starting ApplicationContext"

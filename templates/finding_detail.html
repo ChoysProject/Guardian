@@ -47,7 +47,7 @@
     <pre class="guardian-log">{% for line in samples %}{{ line }}
 {% endfor %}</pre>
     {% if server and samples %}
-    <a class="btn btn-sm btn-primary mt-3" href="/plugins/new?stage=2&amp;server={{ server.name }}&amp;finding={{ finding.id }}">세부 에러 플러그인으로 만들기</a>
+    <a class="btn btn-sm btn-primary mt-3" href="/plugins/new?stage=2&amp;server={{ server.name }}&amp;finding={{ finding.id }}">2단계 세부 플러그인으로 만들기</a>
     <div class="form-text">만든 뒤 로그 수집 대상 서버에서 이 플러그인을 고르면 적용됩니다.</div>
     {% endif %}
   </div>
