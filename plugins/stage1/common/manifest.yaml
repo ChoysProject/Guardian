@@ -6,7 +6,7 @@ enabled: true
 description: >
   모든 서버 공통. ERROR/WARN 집계, INFO/DEBUG 는 많이 쌓일 때만,
   짧은 구간에 ERROR/WARN 이 몰리면 burst 로 표시한다.
-  WAS·DB 같은 공통 시스템은 1단계에서 고르고, 서버별 세부 오류는 2단계로 보낸다.
+  WAS·DB 같은 공통 플러그인은 1단계에서 고르고, 서버별 세부 오류는 2단계로 보낸다.
 targets: ["*"]
 config:
   info_min_count: 20

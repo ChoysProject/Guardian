@@ -88,20 +88,20 @@
           <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. 리눅스에서 시험할 때는 비워 두고 수정 화면의 "시험 로그 넣기"를 누르면 <code>$HOME/GuardianTestLogs/guardian-test.log</code> 에 임시 로그를 씁니다.</div>
         </div>
         {% set pick_id = "edit-s1" %}
-        {% set pick_title = "1단계 공통 시스템" %}
+        {% set pick_title = "1단계 공통 플러그인" %}
         {% set pick_help = "WAS, Spring Boot, Oracle, PostgreSQL처럼 여러 곳이 같이 쓰는 로그를 고릅니다. 고른 것만 1차로 걸러줍니다. ERROR 집계·로그인 실패·디스크 부족은 항상 적용됩니다." %}
         {% set pick_name = "log_plugins" %}
         {% set pick_groups = catalog_groups %}
         {% set pick_chosen = chosen_log_plugins %}
-        {% set pick_empty = "등록된 공통 시스템이 없습니다." %}
+        {% set pick_empty = "등록된 공통 플러그인이 없습니다." %}
         {% include "_log_plugin_picks.html" %}
         {% set pick_id = "edit-s2" %}
-        {% set pick_title = "2단계 세부 에러 플러그인" %}
+        {% set pick_title = "2단계 세부 플러그인" %}
         {% set pick_help = "세션 만료·메모리 부족·교착처럼 이 서버에서만 볼 오류를 고릅니다. 플러그인은 로그 분석 플러그인에서 만들고, 여기서 적용합니다." %}
         {% set pick_name = "stage2_plugins" %}
         {% set pick_groups = custom_groups %}
         {% set pick_chosen = chosen_custom_plugins %}
-        {% set pick_empty = "아직 세부 에러 플러그인이 없습니다." %}
+        {% set pick_empty = "아직 2단계 세부 플러그인이 없습니다." %}
         {% include "_log_plugin_picks.html" %}
         <div class="col-md-6 mb-3">
           <label class="small mb-1" for="note">비고</label>
@@ -166,8 +166,8 @@
   <div class="card-header d-flex align-items-center justify-content-between">
     <span>로그 분석 플러그인</span>
     <div class="d-flex gap-1">
-      <a class="btn btn-sm btn-primary" href="/plugins/new?stage=2&amp;server={{ server.name }}">세부 에러 플러그인 만들기</a>
-      <a class="btn btn-sm btn-outline-primary" href="/plugins/new?stage=3">보고서 형식 추가</a>
+      <a class="btn btn-sm btn-primary" href="/plugins/new?stage=2&amp;server={{ server.name }}">2단계 세부 플러그인 만들기</a>
+      <a class="btn btn-sm btn-outline-primary" href="/plugins/new?stage=3">3단계 로그 보고서 플러그인 추가</a>
     </div>
   </div>
   <div class="card-body p-0">
@@ -186,7 +186,7 @@
             <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a></td>
           </tr>
         {% else %}
-          <tr><td colspan="4" class="text-muted p-4">위에서 1단계 공통 시스템과 2단계 세부 에러 플러그인을 고르세요.</td></tr>
+          <tr><td colspan="4" class="text-muted p-4">위에서 1단계 공통 플러그인과 2단계 세부 플러그인을 고르세요.</td></tr>
         {% endfor %}
         </tbody>
       </table>

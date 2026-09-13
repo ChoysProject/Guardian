@@ -32,7 +32,7 @@ def test_create_rules_plugin_and_match(tmp_path, monkeypatch):
     assert not any(item["signature"] == "shop.pay_fail" for item in miss)
     plugin = [item for item in load_manifests() if item.name == "shop"][0]
     assert plugin.system == "custom"
-    assert plugin.system_label == "세부 에러"
+    assert plugin.system_label == "세부"
     assert plugin.label == "쇼핑몰 결제"
     assert targets_match(plugin, "shop-01")
     assert not targets_match(plugin, "mci-01")

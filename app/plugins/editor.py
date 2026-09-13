@@ -174,10 +174,10 @@ def create_rules_plugin(
         system_id = system.strip() or name
         system_name = system_label.strip() or system_id
         shown = label.strip() or system_name or name
-        desc = description or f"{shown} 공통 시스템 로그를 1단계에서 찾습니다."
+        desc = description or f"{shown} 공통 플러그인 로그를 1단계에서 찾습니다."
     else:
         system_id = system.strip() or "custom"
-        system_name = system_label.strip() or ("세부 에러" if system_id == "custom" else "")
+        system_name = system_label.strip() or ("세부" if system_id == "custom" else "")
         shown = label.strip() or system_name or name
         desc = description or f"{shown} 로그에서 세부 오류를 찾습니다."
     payload = {

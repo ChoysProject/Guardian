@@ -78,20 +78,20 @@
             <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. 리눅스 시험은 수정 화면에서 "시험 로그 넣기"로 <code>$HOME/GuardianTestLogs/</code> 에 임시 파일을 만듭니다.</div>
           </div>
           {% set pick_id = "add-s1" %}
-          {% set pick_title = "1단계 공통 시스템" %}
+          {% set pick_title = "1단계 공통 플러그인" %}
           {% set pick_help = "WAS, Spring Boot, Oracle, PostgreSQL처럼 여러 곳이 같이 쓰는 로그를 고릅니다. 고른 것만 1차로 걸러줍니다. ERROR 집계·로그인 실패·디스크 부족은 항상 적용됩니다." %}
           {% set pick_name = "log_plugins" %}
           {% set pick_groups = catalog_groups %}
           {% set pick_chosen = chosen_log_plugins %}
-          {% set pick_empty = "등록된 공통 시스템이 없습니다." %}
+          {% set pick_empty = "등록된 공통 플러그인이 없습니다." %}
           {% include "_log_plugin_picks.html" %}
           {% set pick_id = "add-s2" %}
-          {% set pick_title = "2단계 세부 에러 플러그인" %}
+          {% set pick_title = "2단계 세부 플러그인" %}
           {% set pick_help = "세션 만료·메모리 부족·교착처럼 이 서버에서만 볼 오류를 고릅니다. 플러그인은 로그 분석 플러그인에서 만들고, 여기서 적용합니다." %}
           {% set pick_name = "stage2_plugins" %}
           {% set pick_groups = custom_groups %}
           {% set pick_chosen = chosen_custom_plugins %}
-          {% set pick_empty = "아직 세부 에러 플러그인이 없습니다. 로그 분석 플러그인에서 만든 뒤 여기서 고르세요." %}
+          {% set pick_empty = "아직 2단계 세부 플러그인이 없습니다. 로그 분석 플러그인에서 만든 뒤 여기서 고르세요." %}
           {% include "_log_plugin_picks.html" %}
           <div class="col-md-6 mb-3">
             <label class="small mb-1" for="note">비고</label>

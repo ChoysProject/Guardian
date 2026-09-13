@@ -20,7 +20,7 @@ def _system_of(data: dict[str, Any], name: str, targets: list[str]) -> tuple[str
         if system == "common":
             label = "공통"
         elif system == "custom":
-            label = "세부 에러"
+            label = "세부"
         else:
             label = system.upper()
     return system, label
