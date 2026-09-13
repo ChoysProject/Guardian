@@ -454,7 +454,7 @@
   if (!input) {
     return;
   }
-  var rows = Array.prototype.slice.call(document.querySelectorAll("tr.resource-server-row"));
+  var rows = Array.prototype.slice.call(document.querySelectorAll("tr[data-search]"));
 
   function apply() {
     var needle = (input.value || "").trim().toLowerCase();

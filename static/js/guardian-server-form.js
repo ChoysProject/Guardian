@@ -4,9 +4,13 @@
   document.querySelectorAll("select[data-picker]").forEach(function (select) {
     var wrap = document.createElement("div");
     wrap.className = "dropdown guardian-picker";
+    var kept = select.value;
     select.parentNode.insertBefore(wrap, select);
     wrap.appendChild(select);
     select.classList.add("d-none");
+    if (kept) {
+      select.value = kept;
+    }
 
     var button = document.createElement("button");
     button.type = "button";
@@ -103,4 +107,31 @@
     bindRemove(row);
     list.appendChild(row);
   });
+})();
+
+(function () {
+  var input = document.getElementById("server-search");
+  var empty = document.getElementById("server-search-empty");
+  if (!input) {
+    return;
+  }
+  var rows = Array.prototype.slice.call(document.querySelectorAll("tr[data-search]"));
+
+  function apply() {
+    var needle = (input.value || "").trim().toLowerCase();
+    var shown = 0;
+    rows.forEach(function (row) {
+      var hay = (row.getAttribute("data-search") || "").toLowerCase();
+      var match = !needle || hay.indexOf(needle) !== -1;
+      row.classList.toggle("d-none", !match);
+      if (match) {
+        shown += 1;
+      }
+    });
+    if (empty) {
+      empty.classList.toggle("d-none", shown > 0 || !rows.length);
+    }
+  }
+
+  input.addEventListener("input", apply);
 })();

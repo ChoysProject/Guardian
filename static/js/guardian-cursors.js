@@ -213,6 +213,13 @@
     });
   });
 
+  var autoId = panel.getAttribute("data-server-id") || "";
+  if (autoId) {
+    serverId = autoId;
+    resetTable();
+    loadPage();
+  }
+
   panel.addEventListener("scroll", function () {
     if (!hasMore || busy) {
       return;

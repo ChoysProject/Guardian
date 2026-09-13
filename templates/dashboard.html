@@ -105,6 +105,35 @@
   </div>
 </div>
 
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>로그 분석 보고서</span>
+    <a class="small" href="/reports">보고서 화면</a>
+  </div>
+  <div class="card-body p-0">
+    {% if reports %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>제목</th><th>플러그인</th><th>요약</th></tr>
+        </thead>
+        <tbody>
+        {% for item in reports %}
+          <tr>
+            <td><a href="/reports/{{ item.id }}">{{ item.title }}</a></td>
+            <td>{{ item.plugin }}</td>
+            <td class="small text-muted">{{ item.summary }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-muted">아직 로그 분석 보고서가 없습니다. 수집 뒤에 보고서 화면에서 만드세요.</div>
+    {% endif %}
+  </div>
+</div>
+
 <div class="row">
   <div class="col-xl-8 mb-4">
     <div class="card h-100">

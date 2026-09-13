@@ -9,19 +9,122 @@ from app.pipeline.normalize import NormalizedEvent
 
 logger = logging.getLogger(__name__)
 
+CATEGORY_ORDER = {
+    "common": 0,
+    "os": 1,
+    "web": 2,
+    "was": 3,
+    "app": 4,
+    "db": 5,
+    "mq": 6,
+    "cache": 7,
+    "eai": 8,
+    "mci": 9,
+    "custom": 10,
+}
 
-def run_stage1(server_name: str, host: str, events: list[NormalizedEvent]) -> list[dict[str, Any]]:
-    return _run_stage(1, server_name, host, events)
+GLOBAL_STAGE3 = {"daily_report", "server_report"}
 
 
-def run_stage2(server_name: str, host: str, events: list[NormalizedEvent]) -> list[dict[str, Any]]:
-    return _run_stage(2, server_name, host, events)
+def _is_always_stage1(manifest: PluginManifest) -> bool:
+    if manifest.stage != 1:
+        return False
+    return manifest.name == "common" or (manifest.system or "common") == "common"
 
 
-def _run_stage(stage: int, server_name: str, host: str, events: list[NormalizedEvent]) -> list[dict[str, Any]]:
+def run_stage1(
+    server_name: str,
+    host: str,
+    events: list[NormalizedEvent],
+    selected: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    return _run_stage(1, server_name, host, events, selected=selected)
+
+
+def run_stage2(
+    server_name: str,
+    host: str,
+    events: list[NormalizedEvent],
+    selected: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    return _run_stage(2, server_name, host, events, selected=selected)
+
+
+def catalog_plugins(enabled_only: bool = True) -> list[PluginManifest]:
+    items = [
+        item
+        for item in load_manifests()
+        if item.stage == 1
+        and item.name != "common"
+        and not _is_always_stage1(item)
+        and (item.enabled or not enabled_only)
+    ]
+    items.sort(
+        key=lambda item: (
+            CATEGORY_ORDER.get(item.system, 50),
+            item.system_label,
+            item.label or item.name,
+        )
+    )
+    return items
+
+
+def custom_plugins(enabled_only: bool = True) -> list[PluginManifest]:
+    items = [
+        item
+        for item in load_manifests()
+        if item.stage == 2 and (item.enabled or not enabled_only)
+    ]
+    items.sort(key=lambda item: (item.system_label or item.system, item.label or item.name))
+    return items
+
+
+def log_analysis_plugins(enabled_only: bool = True) -> list[PluginManifest]:
+    return catalog_plugins(enabled_only=enabled_only) + custom_plugins(enabled_only=enabled_only)
+
+
+def grouped_catalog_plugins(enabled_only: bool = True) -> list[tuple[str, str, list[PluginManifest]]]:
+    return _group_plugins(catalog_plugins(enabled_only=enabled_only))
+
+
+def grouped_custom_plugins(enabled_only: bool = True) -> list[tuple[str, str, list[PluginManifest]]]:
+    return _group_plugins(custom_plugins(enabled_only=enabled_only))
+
+
+def grouped_log_plugins(enabled_only: bool = True) -> list[tuple[str, str, list[PluginManifest]]]:
+    return grouped_catalog_plugins(enabled_only=enabled_only)
+
+
+def _group_plugins(items: list[PluginManifest]) -> list[tuple[str, str, list[PluginManifest]]]:
+    groups: list[tuple[str, str, list[PluginManifest]]] = []
+    index: dict[str, int] = {}
+    for item in items:
+        key = item.system or "custom"
+        if key not in index:
+            index[key] = len(groups)
+            groups.append((key, item.system_label or key, []))
+        groups[index[key]][2].append(item)
+    return groups
+
+
+def _run_stage(
+    stage: int,
+    server_name: str,
+    host: str,
+    events: list[NormalizedEvent],
+    selected: list[str] | None = None,
+) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
+    wanted = {item for item in (selected or []) if item}
     for manifest in load_manifests():
-        if manifest.stage != stage or not manifest.enabled or not targets_match(manifest, server_name):
+        if manifest.stage != stage or not manifest.enabled:
+            continue
+        if stage == 1 and _is_always_stage1(manifest):
+            pass
+        elif wanted:
+            if manifest.name not in wanted:
+                continue
+        elif not targets_match(manifest, server_name):
             continue
         try:
             findings.extend(_run_analyzer(manifest, server_name, host, events))
@@ -46,9 +149,6 @@ def run_stage3(ctx: PluginContext, names: list[str] | None = None) -> list[dict[
     return [item for item in reports if item]
 
 
-GLOBAL_STAGE3 = {"daily_report", "server_report"}
-
-
 def assigned_plugins(server_name: str, stage: int | None = None) -> list[PluginManifest]:
     items = []
     for manifest in load_manifests():
@@ -56,9 +156,11 @@ def assigned_plugins(server_name: str, stage: int | None = None) -> list[PluginM
             continue
         if stage is not None and manifest.stage != stage:
             continue
-        if manifest.stage == 1:
+        if manifest.stage == 1 and _is_always_stage1(manifest):
             continue
         if manifest.stage == 3 and manifest.name in GLOBAL_STAGE3:
+            continue
+        if manifest.stage not in {1, 2, 3}:
             continue
         if not manifest.targets or "*" in manifest.targets:
             continue

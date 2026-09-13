@@ -26,7 +26,7 @@ def _root() -> Path:
 
 
 def plugin_folder(stage: int, name: str) -> Path:
-    if stage not in (2, 3, 4) or not NAME_RE.fullmatch(name or ""):
+    if stage not in (1, 2, 3, 4) or not NAME_RE.fullmatch(name or ""):
         raise ValueError("플러그인 이름이 올바르지 않습니다.")
     folder = (_root() / f"stage{stage}" / name).resolve()
     if _root() not in folder.parents:
@@ -67,13 +67,23 @@ def save_plugin(
     rules: list[dict[str, Any]] | None = None,
     config: dict[str, Any] | None = None,
     script: str | None = None,
+    system: str = "",
+    system_label: str = "",
+    label: str = "",
 ) -> None:
     folder = plugin_folder(stage, name)
     data = _read_raw(folder)
     data["enabled"] = bool(enabled)
-    data["targets"] = targets or ["*"]
+    data["targets"] = ["*"] if stage == 4 else list(targets or [])
     if description:
         data["description"] = description
+    if stage in (1, 2):
+        if system.strip():
+            data["system"] = system.strip()
+        if system_label.strip():
+            data["system_label"] = system_label.strip()
+        if label.strip():
+            data["label"] = label.strip()
     if rules is not None and data.get("type", "python") == "rules":
         data["rules"] = rules
     if config:
@@ -150,23 +160,40 @@ def create_rules_plugin(
     description: str = "",
     targets: list[str],
     rules: list[dict[str, Any]],
+    system: str = "",
+    system_label: str = "",
+    label: str = "",
+    stage: int = 2,
 ) -> Path:
-    folder = plugin_folder(2, name)
+    if stage not in (1, 2):
+        raise ValueError("규칙 플러그인은 1단계 또는 2단계만 만들 수 있습니다.")
+    folder = plugin_folder(stage, name)
     if (folder / "manifest.yaml").exists():
         raise FileExistsError(f"이미 있는 플러그인입니다: {name}")
-    _dump(
-        folder / "manifest.yaml",
-        {
-            "name": name,
-            "stage": 2,
-            "version": "1.0",
-            "type": "rules",
-            "enabled": True,
-            "description": description or f"{name} 서버 규칙",
-            "targets": targets or ["*"],
-            "rules": rules or [],
-        },
-    )
+    if stage == 1:
+        system_id = system.strip() or name
+        system_name = system_label.strip() or system_id
+        shown = label.strip() or system_name or name
+        desc = description or f"{shown} 공통 시스템 로그를 1단계에서 찾습니다."
+    else:
+        system_id = system.strip() or "custom"
+        system_name = system_label.strip() or ("세부 에러" if system_id == "custom" else "")
+        shown = label.strip() or system_name or name
+        desc = description or f"{shown} 로그에서 세부 오류를 찾습니다."
+    payload = {
+        "name": name,
+        "stage": stage,
+        "version": "1.0",
+        "type": "rules",
+        "enabled": True,
+        "description": desc,
+        "targets": list(targets) if targets is not None else [],
+        "system": system_id,
+        "system_label": system_name or system_id,
+        "label": shown,
+        "rules": rules or [],
+    }
+    _dump(folder / "manifest.yaml", payload)
     return folder
 
 
@@ -177,6 +204,7 @@ def create_report_plugin(
     targets: list[str],
     title: str = "",
     mode: str = "all",
+    intro: str = "",
 ) -> Path:
     folder = plugin_folder(3, name)
     if (folder / "manifest.yaml").exists():
@@ -194,11 +222,75 @@ def create_report_plugin(
             "config": {
                 "mode": mode if mode in {"all", "per_server"} else "all",
                 "title": title or name,
+                "intro": intro,
             },
         },
     )
     (folder / "plugin.py").write_text(STAGE3_PLUGIN_PY.format(name=name), encoding="utf-8")
     return folder
+
+
+_LOG_TS = re.compile(r"^\s*\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?\s+")
+_LOG_LEVEL = re.compile(r"^\[?(?:DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|TRACE)\]?\s*[:\-]?\s*", re.I)
+_LOG_LOGGER = re.compile(r"^(?:\[[^\]]{1,80}\]\s*|\S{1,80}\s+-\s+)")
+
+
+def phrase_from_log_line(line: str) -> str:
+    text = (line or "").strip()
+    if not text or text.startswith("#"):
+        return ""
+    text = _LOG_TS.sub("", text, count=1)
+    text = _LOG_LEVEL.sub("", text, count=1)
+    text = _LOG_LOGGER.sub("", text, count=1)
+    return text.strip()
+
+
+def _rule_signature(plugin_name: str, phrase: str, index: int) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", phrase).strip("_").lower()[:24]
+    if not slug or not re.search(r"[a-zA-Z]", slug):
+        return f"{plugin_name}.phrase{index}"
+    return f"{plugin_name}.{slug}"
+
+
+def literal_rules(phrases: list[str], plugin_name: str) -> list[dict[str, Any]]:
+    rules: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in phrases:
+        phrase = (raw or "").strip()
+        if len(phrase) < 2:
+            continue
+        key = phrase.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        index = len(rules) + 1
+        rules.append(
+            {
+                "pattern": re.escape(phrase),
+                "severity": "error",
+                "signature": _rule_signature(plugin_name, phrase, index),
+                "min_count": 1,
+            }
+        )
+    return rules
+
+
+def rules_from_sample_logs(text: str, plugin_name: str) -> list[dict[str, Any]]:
+    phrases = [phrase_from_log_line(line) for line in (text or "").splitlines()]
+    return literal_rules(phrases, plugin_name)
+
+
+def merge_rules(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for group in groups:
+        for rule in group or []:
+            pattern = str(rule.get("pattern") or "").strip()
+            if not pattern or pattern in seen:
+                continue
+            seen.add(pattern)
+            merged.append(rule)
+    return merged
 
 
 def clean_rules(patterns: list[str], severities: list[str], signatures: list[str], mins: list[str]) -> list[dict[str, Any]]:

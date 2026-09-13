@@ -1,0 +1,23 @@
+name: weblogic
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: was
+system_label: WAS
+label: WebLogic
+description: WebLogic BEA/WL 오류, 서버 상태, JDBC 실패를 찾습니다.
+targets: ["weblogic-.*", "wls-.*"]
+rules:
+  - pattern: "BEA-\\d+|WL-\\d+"
+    severity: error
+    signature: weblogic.error_code
+    min_count: 1
+  - pattern: "Failed to start|server failed to boot"
+    severity: error
+    signature: weblogic.boot_failed
+    min_count: 1
+  - pattern: "JDBC|connection pool .* exhausted"
+    severity: error
+    signature: weblogic.jdbc
+    min_count: 1

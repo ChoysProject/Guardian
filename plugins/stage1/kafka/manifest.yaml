@@ -1,0 +1,27 @@
+name: kafka
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: mq
+system_label: 메시징
+label: Kafka
+description: Kafka under-replicated, NotLeader, 디스크 문제를 찾습니다.
+targets: ["kafka-.*"]
+rules:
+  - pattern: "UnderReplicatedPartitions|under-replicated"
+    severity: error
+    signature: kafka.under_replicated
+    min_count: 1
+  - pattern: "NotLeaderOrFollower|NOT_LEADER_OR_FOLLOWER|LeaderNotAvailable"
+    severity: error
+    signature: kafka.not_leader
+    min_count: 1
+  - pattern: "No space left on device|Disk error"
+    severity: error
+    signature: kafka.disk
+    min_count: 1
+  - pattern: "ISR shrink|offline replica"
+    severity: warn
+    signature: kafka.isr
+    min_count: 1

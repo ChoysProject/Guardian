@@ -1,52 +1,89 @@
 {% extends "base.html" %}
-{% set title = "플러그인 추가" %}
-{% set heading = bind_server ~ " 전용 플러그인" if bind_server else "플러그인 추가" %}
+{% set title = "1단계 공통 시스템" if stage == 1 else ("세부 에러 플러그인" if stage == 2 else ("보고서 형식" if stage == 3 else "플러그인 추가")) %}
+{% set heading = (bind_server ~ "에 붙일 세부 에러") if bind_server and stage == 2 else (bind_server ~ " 전용 플러그인" if bind_server else title) %}
 {% block content %}
 <form method="post" action="/plugins/new">
   <input type="hidden" name="stage" value="{{ stage }}">
   {% if bind_server %}<input type="hidden" name="bind_server" value="{{ bind_server }}">{% endif %}
   <div class="card mb-4">
-    <div class="card-header">{% if stage == 4 %}리소스 및 성능 수집{% elif stage == 3 %}로그 분석 보고서{% else %}로그 분석 규칙{% endif %}{% if bind_server %} · {{ bind_server }}{% endif %}</div>
+    <div class="card-header">{% if stage == 4 %}리소스 및 성능 수집{% elif stage == 3 %}보고서가 나올 형식{% elif stage == 1 %}1단계 공통 시스템 규칙{% else %}세부 에러 규칙{% endif %}{% if bind_server %} · {{ bind_server }}{% endif %}</div>
     <div class="card-body">
+      {% if stage == 1 %}
+      <p class="small text-muted mb-3">
+        WAS, Spring Boot, Oracle, PostgreSQL처럼 여러 서버가 같이 쓰는 제품 로그 규칙을 1단계에 추가합니다.
+        서버 등록에서 이 시스템을 고르면 1차로 걸러줍니다. 앱마다 다른 오류 문구는 세부 에러 플러그인에 넣습니다.
+      </p>
       <div class="mb-3">
-        <label class="small mb-1" for="name">이름 (영문/숫자/_-)</label>
-        <input class="form-control" id="name" name="name" required value="{{ default_name }}" placeholder="영문·숫자·밑줄만 쓰는 식별 이름">
+        <label class="small mb-1" for="label">화면에 보일 이름</label>
+        <input class="form-control" id="label" name="label" value="{{ form_label | default('') }}" placeholder="PostgreSQL, WebLogic">
+      </div>
+      <div class="row gx-3">
+        <div class="col-md-6 mb-3">
+          <label class="small mb-1" for="system">그룹 식별자</label>
+          <input class="form-control" id="system" name="system" value="{{ form_system | default('') }}" placeholder="was, db, web">
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="small mb-1" for="system_label">그룹에 보일 이름</label>
+          <input class="form-control" id="system_label" name="system_label" value="{{ form_system_label | default('') }}" placeholder="WAS, DB">
+        </div>
+      </div>
+      {% endif %}
+      {% if stage == 2 %}
+      <p class="small text-muted mb-3">
+        공통 제품 로그가 아닌, 이 서버·이 업무에서만 나오는 오류를 넣습니다.
+        만든 뒤에는 로그 수집 대상 서버에서 이 플러그인을 고르면 적용됩니다.
+      </p>
+      <div class="mb-3">
+        <label class="small mb-1" for="label">플러그인 이름</label>
+        <input class="form-control" id="label" name="label" value="{{ form_label | default('') }}" placeholder="세션 만료, 힙 메모리 부족, DB 교착">
+        <div class="form-text">로그 수집 서버 선택 화면에 이렇게 보입니다.</div>
+      </div>
+      {% endif %}
+      <div class="mb-3">
+        <label class="small mb-1" for="name">영문 이름 (파일명)</label>
+        <input class="form-control" id="name" name="name" required value="{{ default_name }}" placeholder="session_expired 처럼 영문·숫자·밑줄">
       </div>
       <div class="mb-3">
         <label class="small mb-1" for="description">설명</label>
-        <input class="form-control" id="description" name="description" placeholder="이 플러그인이 하는 일"{% if bind_server %} value="{{ bind_server }} 전용"{% endif %}>
+        <input class="form-control" id="description" name="description" placeholder="이 플러그인이 하는 일" value="{{ form_description | default(bind_server ~ ' 전용' if bind_server else '') }}">
       </div>
-      {% if stage == 3 %}
-      <div class="mb-3">
-        <label class="small mb-1" for="title">보고서 제목</label>
-        <input class="form-control" id="title" name="title" placeholder="보고서에 표시할 제목"{% if bind_server %} value="{{ bind_server }} 일일 보고서"{% endif %}>
-      </div>
-      <div class="mb-3">
-        <label class="small mb-1" for="mode">모드</label>
-        <select class="form-select" id="mode" name="mode">
-          <option value="all"{% if not bind_server %} selected{% endif %}>통합</option>
-          <option value="per_server"{% if bind_server %} selected{% endif %}>서버별</option>
-        </select>
-      </div>
-      {% endif %}
-      <div class="form-check mb-2">
-        <input class="form-check-input" type="checkbox" name="all_servers" id="all_servers" value="1"{% if bind_server %} disabled{% endif %}>
-        <label class="form-check-label" for="all_servers">모든 서버</label>
-      </div>
-      <div class="row mb-3">
-        {% for server in servers %}
-        <div class="col-md-3">
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="server_names" value="{{ server.name }}" id="nsrv-{{ server.id }}"{% if bind_server and server.name == bind_server %} checked{% endif %}>
-            <label class="form-check-label" for="nsrv-{{ server.id }}">{{ server.name }}</label>
+      {% if stage == 2 %}
+      <details class="mb-3">
+        <summary class="small text-muted">기반 솔루션으로 묶기 (선택)</summary>
+        <div class="row gx-3 mt-2">
+          <div class="col-md-6 mb-2">
+            <label class="small mb-1" for="system">그룹 식별자</label>
+            <input class="form-control" id="system" name="system" value="{{ form_system | default('custom') }}" placeholder="custom">
+            <div class="form-text">비우거나 custom 이면 「세부 에러」 그룹에 들어갑니다.</div>
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="small mb-1" for="system_label">그룹에 보일 이름</label>
+            <input class="form-control" id="system_label" name="system_label" value="{{ form_system_label | default('세부 에러') }}" placeholder="세부 에러">
           </div>
         </div>
-        {% endfor %}
+      </details>
+      {% endif %}
+      {% if stage == 3 %}
+      <p class="small text-muted mb-3">
+        여기서는 보고서가 어떤 식으로 나올지를 정합니다. 제목, 묶는 단위, 맨 위 안내 문구를 넣으면 그 형식으로 만들어집니다.
+        실제 생성은 로그 분석 보고서 화면에서 서버를 고르고 합니다.
+      </p>
+      <div class="mb-3">
+        <label class="small mb-1" for="title">보고서 제목</label>
+        <input class="form-control" id="title" name="title" placeholder="예: 일일 이상징후, 서버별 점검 결과"{% if bind_server %} value="{{ bind_server }} 일일 보고서"{% endif %}>
+      </div>
+      <div class="mb-3">
+        <label class="small mb-1" for="mode">묶는 단위</label>
+        <select class="form-select" id="mode" name="mode">
+          <option value="all"{% if not bind_server %} selected{% endif %}>한 파일에 모음</option>
+          <option value="per_server"{% if bind_server %} selected{% endif %}>서버마다 파일</option>
+        </select>
       </div>
       <div class="mb-0">
-        <label class="small mb-1" for="target_patterns">이름 패턴 (쉼표)</label>
-        <input class="form-control" id="target_patterns" name="target_patterns" placeholder="서버 이름에 맞는 정규식">
+        <label class="small mb-1" for="intro">맨 위 안내</label>
+        <input class="form-control" id="intro" name="intro" placeholder="예: 오늘 수집분 기준, 담당자 확인용">
       </div>
+      {% endif %}
     </div>
   </div>
   {% if stage == 4 %}
@@ -64,7 +101,73 @@
 
   {% if stage == 2 %}
   <div class="card mb-4">
-    <div class="card-header">로그 규칙</div>
+    <div class="card-header">찾을 오류 문구</div>
+    <div class="card-body">
+      {% if collected_lines %}
+      <div class="mb-3">
+        <label class="small mb-1">수집된 ERROR/WARN 줄</label>
+        <p class="small text-muted mb-2">이 서버에서 이미 읽은 줄입니다. 찾을 오류만 체크하면 규칙이 됩니다. 적용은 로그 수집 대상 서버에서 고릅니다.</p>
+        <div class="border rounded p-2" style="max-height: 16rem; overflow: auto;">
+          {% for line in collected_lines %}
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              name="picked_logs"
+              value="{{ line }}"
+              id="picked-{{ loop.index }}"
+              {% if from_finding %}checked{% endif %}
+            >
+            <label class="form-check-label font-monospace small text-break" for="picked-{{ loop.index }}">{{ line }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% elif bind_server %}
+      <div class="alert alert-light border small mb-3" role="alert">
+        아직 이 서버에서 모은 ERROR 줄이 없습니다. 먼저 수집하거나 시험 로그를 넣은 뒤, 그 줄에서 플러그인을 만듭니다.
+      </div>
+      {% endif %}
+      <div class="mb-3">
+        <label class="small mb-1" for="phrases">또는 찾을 문구 (한 줄에 하나)</label>
+        <textarea class="form-control font-monospace" id="phrases" name="phrases" rows="5" placeholder="Connection timed out&#10;OutOfMemoryError&#10;NullPointerException&#10;Deadlock detected&#10;Too many open files">{{ form_phrases | default('') }}</textarea>
+      </div>
+      <div class="mb-0">
+        <label class="small mb-1" for="sample_logs">또는 실제 로그 붙여넣기</label>
+        <textarea class="form-control font-monospace" id="sample_logs" name="sample_logs" rows="5" placeholder="2026-09-13 10:00:00 ERROR [http] Connection timed out: pool exhausted&#10;2026-09-13 10:01:12 ERROR java.lang.OutOfMemoryError: Java heap space&#10;2026-09-13 10:02:44 WARN [db] Deadlock detected waiting for lock">{{ form_sample_logs | default('') }}</textarea>
+        <div class="form-text">한 줄에서 메시지 부분을 뽑아 규칙으로 넣습니다. 숫자·ID까지 붙어 있으면 규칙 수정에서 공통 문구만 남기세요.</div>
+      </div>
+    </div>
+  </div>
+  <details class="card mb-4">
+    <summary class="card-header">고급 · 정규식 규칙</summary>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table mb-0">
+          <thead><tr><th>정규식/문구</th><th>심각도</th><th>시그니처</th><th>최소 건수</th></tr></thead>
+          <tbody>
+          {% for _ in range(3) %}
+            <tr>
+              <td><input class="form-control form-control-sm" name="rule_pattern" placeholder="로그에서 찾을 정규식"></td>
+              <td>
+                <select class="form-select form-select-sm" name="rule_severity">
+                  <option value="error">error</option>
+                  <option value="warn">warn</option>
+                </select>
+              </td>
+              <td><input class="form-control form-control-sm" name="rule_signature" placeholder="이 규칙을 구분할 이름"></td>
+              <td><input class="form-control form-control-sm" name="rule_min_count" type="number" min="1" value="1"></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+  {% endif %}
+  {% if stage == 1 %}
+  <div class="card mb-4">
+    <div class="card-header">1단계에서 찾을 오류 문구·정규식</div>
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table mb-0">
@@ -72,7 +175,7 @@
           <tbody>
           {% for _ in range(5) %}
             <tr>
-              <td><input class="form-control form-control-sm" name="rule_pattern" placeholder="로그에서 찾을 정규식 또는 문구"></td>
+              <td><input class="form-control form-control-sm" name="rule_pattern" placeholder="ORA-00600, Caused by: 처럼 제품 로그 문구"></td>
               <td>
                 <select class="form-select form-select-sm" name="rule_severity">
                   <option value="error">error</option>

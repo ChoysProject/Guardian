@@ -1,0 +1,27 @@
+name: nginx
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: web
+system_label: 웹 서버
+label: Nginx
+description: Nginx 502/504, upstream timeout, worker 비정상 종료를 찾습니다.
+targets: ["nginx-.*", "web-.*"]
+rules:
+  - pattern: "upstream timed out|upstream prematurely closed"
+    severity: error
+    signature: nginx.upstream_timeout
+    min_count: 1
+  - pattern: "connect\\(\\) failed .* upstream|no live upstreams"
+    severity: error
+    signature: nginx.upstream_down
+    min_count: 1
+  - pattern: "worker process .* exited on signal|emerg"
+    severity: error
+    signature: nginx.worker_crash
+    min_count: 1
+  - pattern: "rewrites cycle|too many redirects"
+    severity: warn
+    signature: nginx.rewrite_loop
+    min_count: 1

@@ -15,6 +15,9 @@ class PluginManifest:
     description: str = ""
     plugin_type: str = "python"  # python | rules
     targets: list[str] = field(default_factory=lambda: ["*"])
+    system: str = ""
+    system_label: str = ""
+    label: str = ""
     enabled: bool = True
     config: dict[str, Any] = field(default_factory=dict)
     rules: list[dict[str, Any]] = field(default_factory=list)

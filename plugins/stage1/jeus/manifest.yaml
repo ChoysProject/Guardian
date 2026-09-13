@@ -1,0 +1,27 @@
+name: jeus
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: was
+system_label: WAS
+label: JEUS (Tmax)
+description: Tmax JEUS 기동 실패, 배포 오류, 라이선스 문제를 찾습니다.
+targets: ["jeus-.*"]
+rules:
+  - pattern: "JEUS[-_ ]?\\d+|\\[JEUS\\]"
+    severity: error
+    signature: jeus.error_code
+    min_count: 1
+  - pattern: "deploy(ment)? failed|애플리케이션 배포 실패"
+    severity: error
+    signature: jeus.deploy_failed
+    min_count: 1
+  - pattern: "license|라이선스"
+    severity: error
+    signature: jeus.license
+    min_count: 1
+  - pattern: "OutOfMemoryError|heap space"
+    severity: error
+    signature: jeus.oom
+    min_count: 1

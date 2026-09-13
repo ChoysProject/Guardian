@@ -1,7 +1,10 @@
 name: auth_failures
-stage: 2
+stage: 1
 version: "1.0"
 type: python
+system: common
+system_label: 공통
+label: SSH/로그인 실패
 description: SSH/로그인 실패와 잘못된 계정 시도를 집계합니다.
 targets: ["*"]
 config:

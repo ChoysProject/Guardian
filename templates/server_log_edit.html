@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% set title = server.name %}
+{% set heading = server.name + " 수정" %}
+{% block content %}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>접속 정보</span>
+    <div class="d-flex gap-1">
+      <form method="post" action="/servers/logs/{{ server.id }}/test" class="mb-0">
+        <button class="btn btn-sm btn-outline-secondary" type="submit">접속 확인</button>
+      </form>
+      <form method="post" action="/servers/logs/{{ server.id }}/seed-logs" class="mb-0">
+        <button class="btn btn-sm btn-outline-primary" type="submit">시험 로그 넣기</button>
+      </form>
+      <form method="post" action="/servers/{{ server.id }}/collect" class="mb-0">
+        <button class="btn btn-sm btn-primary" type="submit">지금 수집</button>
+      </form>
+    </div>
+  </div>
+  <div class="card-body">
+    <form
+      id="make-key-form"
+      method="post"
+      action="/servers/logs/{{ server.id }}/make-key"
+      class="d-none"
+      {% if public_key %}data-confirm-title="키 다시 만들기" data-confirm="이 PC 공용 개인키를 새로 만듭니다. 이 키를 쓰는 모든 서버에서 예전 공개키는 더 이상 통하지 않습니다." data-confirm-ok="만들기"{% endif %}
+    ></form>
+    <form method="post" action="/servers/logs/{{ server.id }}/edit" enctype="multipart/form-data">
+      <div class="row gx-3">
+        <div class="col-md-4 mb-3">
+          <label class="small mb-1" for="host">호스트 (IP)</label>
+          <input class="form-control" id="host" name="host" value="{{ server.host }}" placeholder="접속할 IP 또는 호스트명">
+        </div>
+        <div class="col-md-2 mb-3">
+          <label class="small mb-1" for="port">포트</label>
+          <input class="form-control" id="port" name="port" type="number" value="{{ server.port }}">
+        </div>
+        <div class="col-md-3 mb-3">
+          <label class="small mb-1" for="username">계정</label>
+          <input class="form-control" id="username" name="username" value="{{ server.username }}" placeholder="SSH 로그인 계정">
+        </div>
+        <div class="col-md-3 mb-3">
+          <label class="small mb-1" for="collector_type">수집기</label>
+          <select class="form-select" id="collector_type" name="collector_type" data-picker>
+            <option value="ssh" data-desc="원격 서버에 붙어서 로그를 읽습니다" {% if server.collector_type == "ssh" %}selected{% endif %}>ssh</option>
+            <option value="local" data-desc="Guardian이 도는 이 서버에서 읽습니다" {% if server.collector_type == "local" %}selected{% endif %}>local</option>
+          </select>
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="small mb-1" for="auth_type">인증 방식</label>
+          <select class="form-select auth-type" id="auth_type" name="auth_type" data-picker>
+            <option value="key" data-desc="키 파일을 올리거나 서버 안 경로를 씁니다" {% if server.auth_type == "key" %}selected{% endif %}>개인키 (id_rsa)</option>
+            <option value="password" data-desc="암호화해서 보관합니다" {% if server.auth_type == "password" %}selected{% endif %}>비밀번호</option>
+            <option value="agent" data-desc="ssh-agent나 기본 키에 맡깁니다" {% if server.auth_type == "agent" %}selected{% endif %}>에이전트 / 기본 키</option>
+          </select>
+        </div>
+        <div class="col-md-4 mb-3 auth-password {% if server.auth_type != 'password' %}d-none{% endif %}">
+          <label class="small mb-1" for="password">비밀번호</label>
+          <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" placeholder="{% if server.password_enc %}저장돼 있음 · 바꿀 때만 입력{% else %}SSH 비밀번호{% endif %}">
+        </div>
+        <div class="col-md-4 mb-3 auth-key {% if server.auth_type != 'key' %}d-none{% endif %}">
+          <label class="small mb-1" for="key_file">개인키 파일 바꾸기</label>
+          <input class="form-control" id="key_file" name="key_file" type="file">
+          <div class="form-text">{% if key_label %}지금: {{ key_label }}{% else %}아직 등록한 키가 없습니다.{% endif %}</div>
+        </div>
+        <div class="col-md-4 mb-3 auth-key {% if server.auth_type != 'key' %}d-none{% endif %}">
+          <label class="small mb-1" for="key_path">또는 키 경로</label>
+          <input class="form-control" id="key_path" name="key_path" value="{{ server.key_path }}" placeholder="개인키 파일의 전체 경로">
+        </div>
+        <div class="col-12 mb-3 auth-key {% if server.auth_type != 'key' %}d-none{% endif %}">
+          <label class="small mb-1" for="guardian-pubkey">공개키 (이 PC 공용)</label>
+          {% if public_key %}
+          <div class="input-group">
+            <textarea class="form-control guardian-pubkey" id="guardian-pubkey" rows="2" readonly>{{ public_key }}</textarea>
+            <button class="btn btn-outline-secondary js-copy" type="button" data-copy="{{ public_key }}">복사</button>
+          </div>
+          <div class="form-text">개인키는 이 PC에 하나뿐입니다. 같은 공개키를 여러 서버 <code>~/.ssh/authorized_keys</code>에 넣으면 됩니다.</div>
+          {% else %}
+          <div class="form-text mb-2">아직 공용 키가 없습니다. 만들거나 개인키 파일을 올리세요.</div>
+          {% endif %}
+          <button class="btn btn-sm btn-outline-secondary mt-2" type="submit" form="make-key-form">
+            {% if public_key %}키 다시 만들기{% else %}키 만들기{% endif %}
+          </button>
+        </div>
+        <div class="col-12 mb-3">
+          <label class="small mb-1" for="log_paths">로그 경로 (줄바꿈 또는 쉼표)</label>
+          <textarea class="form-control" id="log_paths" name="log_paths" rows="4" placeholder="읽을 로그 파일 경로. 줄마다 하나. 일자·시간 패턴과 * 사용 가능">{{ log_paths_text }}</textarea>
+          <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. 리눅스에서 시험할 때는 비워 두고 수정 화면의 "시험 로그 넣기"를 누르면 <code>$HOME/GuardianTestLogs/guardian-test.log</code> 에 임시 로그를 씁니다.</div>
+        </div>
+        {% set pick_id = "edit-s1" %}
+        {% set pick_title = "1단계 공통 시스템" %}
+        {% set pick_help = "WAS, Spring Boot, Oracle, PostgreSQL처럼 여러 곳이 같이 쓰는 로그를 고릅니다. 고른 것만 1차로 걸러줍니다. ERROR 집계·로그인 실패·디스크 부족은 항상 적용됩니다." %}
+        {% set pick_name = "log_plugins" %}
+        {% set pick_groups = catalog_groups %}
+        {% set pick_chosen = chosen_log_plugins %}
+        {% set pick_empty = "등록된 공통 시스템이 없습니다." %}
+        {% include "_log_plugin_picks.html" %}
+        {% set pick_id = "edit-s2" %}
+        {% set pick_title = "2단계 세부 에러 플러그인" %}
+        {% set pick_help = "세션 만료·메모리 부족·교착처럼 이 서버에서만 볼 오류를 고릅니다. 플러그인은 로그 분석 플러그인에서 만들고, 여기서 적용합니다." %}
+        {% set pick_name = "stage2_plugins" %}
+        {% set pick_groups = custom_groups %}
+        {% set pick_chosen = chosen_custom_plugins %}
+        {% set pick_empty = "아직 세부 에러 플러그인이 없습니다." %}
+        {% include "_log_plugin_picks.html" %}
+        <div class="col-md-6 mb-3">
+          <label class="small mb-1" for="note">비고</label>
+          <input class="form-control" id="note" name="note" value="{{ server.note }}" placeholder="운영 시 참고할 메모">
+        </div>
+      </div>
+      <div class="d-flex justify-content-end gap-2">
+        <button class="btn btn-primary" type="submit">저장</button>
+        <a class="btn btn-outline-secondary" href="/servers/logs">목록</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>체크포인트 · 마지막 수집 {{ server.last_collect_at | ts }}</span>
+    <form method="post" action="/servers/{{ server.id }}/toggle" class="mb-0">
+      <button class="btn btn-sm btn-outline-secondary" type="submit">{% if server.enabled %}수집 중지{% else %}수집 켜기{% endif %}</button>
+    </form>
+  </div>
+  {% if server.last_error %}
+  <div class="card-body border-bottom py-2">
+    <div class="d-flex align-items-start justify-content-between small text-danger">
+      <span class="me-2">마지막 수집 오류: {{ server.last_error }}</span>
+      <div class="d-flex align-items-center gap-1 flex-shrink-0">
+        <button
+          class="js-copy guardian-copy-btn"
+          type="button"
+          data-copy="{{ server.last_error }}"
+          title="복사"
+          aria-label="복사"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+            <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+          </svg>
+        </button>
+        <form method="post" action="/servers/logs/{{ server.id }}/clear-error" class="mb-0">
+          <button class="btn btn-sm btn-outline-danger" type="submit">오류 지우기</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  <div class="card-body p-0">
+    <div class="table-responsive checkpoint-panel" id="checkpoint-panel" data-server-id="{{ server.id }}">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>파일</th><th>읽은 위치</th><th>파일 크기</th><th>갱신</th></tr>
+        </thead>
+        <tbody id="checkpoint-body">
+          <tr id="checkpoint-empty"><td colspan="4" class="text-muted">아직 수집한 파일이 없습니다.</td></tr>
+        </tbody>
+      </table>
+      <div class="small text-muted text-center py-2 d-none" id="checkpoint-loading">불러오는 중…</div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>로그 분석 플러그인</span>
+    <div class="d-flex gap-1">
+      <a class="btn btn-sm btn-primary" href="/plugins/new?stage=2&amp;server={{ server.name }}">세부 에러 플러그인 만들기</a>
+      <a class="btn btn-sm btn-outline-primary" href="/plugins/new?stage=3">보고서 형식 추가</a>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>이름</th><th>시스템</th><th>단계</th><th></th></tr></thead>
+        <tbody>
+        {% for item in applied_plugins %}
+          <tr>
+            <td>
+              {{ item.label or item.name }}
+              <div class="small text-muted">{{ item.description }}</div>
+            </td>
+            <td class="small">{{ item.system_label or item.system or "-" }}</td>
+            <td class="small">{% if item.stage == 3 %}보고서{% else %}규칙{% endif %}</td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="text-muted p-4">위에서 1단계 공통 시스템과 2단계 세부 에러 플러그인을 고르세요.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>최근 징후</span>
+    <a class="small" href="/findings">전체 징후</a>
+  </div>
+  <div class="card-body p-0">
+    {% if findings %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>심각도</th><th>시그니처</th><th>건수</th><th>플러그인</th></tr></thead>
+        <tbody>
+        {% for item in findings %}
+          <tr>
+            <td>
+              {% if item.severity == 'error' %}<span class="badge bg-danger">{{ item.severity }}</span>
+              {% elif item.severity == 'warn' %}<span class="badge bg-warning">{{ item.severity }}</span>
+              {% else %}<span class="badge bg-secondary">{{ item.severity }}</span>{% endif %}
+            </td>
+            <td><a href="/findings/{{ item.id }}"><code>{{ item.signature }}</code></a></td>
+            <td>{{ item.count }}</td>
+            <td class="small">{{ item.plugin }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-muted">아직 징후가 없습니다. 시험 로그를 넣거나 수집을 실행하세요.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>로그 분석 보고서</span>
+    <form class="js-report-generate mb-0" method="post" action="/reports/generate">
+      <input type="hidden" name="selecting" value="1">
+      <input type="hidden" name="servers" value="{{ server.name }}">
+      <button class="btn btn-sm btn-outline-primary" type="submit">이 서버 보고서 만들기</button>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    {% if server_reports %}
+    <ul class="list-group list-group-flush">
+      {% for item in server_reports %}
+      <li class="list-group-item d-flex align-items-center justify-content-between small">
+        <a href="/reports/{{ item.id }}">{{ item.title }}</a>
+        <span class="text-muted">{{ item.created_at | ts }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="p-4 text-muted">아직 이 서버 보고서가 없습니다. 징후를 모은 뒤 만들어 보세요.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mb-4 border-danger-subtle">
+  <div class="card-header">수집 서버 제거</div>
+  <div class="card-body d-flex align-items-center justify-content-between">
+    <div class="small text-muted">
+      {% if server.collect_resources %}리소스 수집도 하는 서버라 로그 수집 대상에서만 제거합니다.{% else %}등록 정보와 올린 키를 지웁니다. 쌓인 징후·보고서는 남습니다.{% endif %}
+    </div>
+    <form method="post" action="/servers/logs/{{ server.id }}/delete" data-confirm-title="수집 서버 제거" data-confirm="이 수집 서버를 제거할까요?" data-confirm-ok="제거">
+      <button class="btn btn-sm btn-outline-danger" type="submit">제거</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/guardian-cursors.js"></script>
+<script src="/static/js/guardian-server-form.js"></script>
+{% endblock %}

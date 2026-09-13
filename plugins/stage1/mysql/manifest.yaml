@@ -1,0 +1,27 @@
+name: mysql
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: db
+system_label: 데이터베이스
+label: MySQL/MariaDB
+description: MySQL 크래시, InnoDB, 연결 한도를 찾습니다.
+targets: ["mysql-.*", "mariadb-.*"]
+rules:
+  - pattern: "mysqld got signal|InnoDB: Assertion failure"
+    severity: error
+    signature: mysql.crash
+    min_count: 1
+  - pattern: "Too many connections"
+    severity: error
+    signature: mysql.conn_limit
+    min_count: 1
+  - pattern: "Table .* is marked as crashed|Corrupt"
+    severity: error
+    signature: mysql.corrupt
+    min_count: 1
+  - pattern: "Aborted connection"
+    severity: warn
+    signature: mysql.aborted
+    min_count: 3

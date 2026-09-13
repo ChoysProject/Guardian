@@ -1,0 +1,23 @@
+name: redis
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: cache
+system_label: 캐시
+label: Redis
+description: Redis OOM, MISCONF, 복제 단절을 찾습니다.
+targets: ["redis-.*"]
+rules:
+  - pattern: "OOM command not allowed|maxmemory"
+    severity: error
+    signature: redis.oom
+    min_count: 1
+  - pattern: "MISCONF|Redis is configured to save RDB"
+    severity: error
+    signature: redis.misconf
+    min_count: 1
+  - pattern: "Connection with replica .* lost|MASTER down"
+    severity: error
+    signature: redis.replication
+    min_count: 1

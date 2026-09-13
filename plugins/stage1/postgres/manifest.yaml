@@ -1,0 +1,27 @@
+name: postgres
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: db
+system_label: 데이터베이스
+label: PostgreSQL
+description: PostgreSQL FATAL/PANIC, 데드락, 연결 한도를 찾습니다.
+targets: ["postgres-.*", "pg-.*"]
+rules:
+  - pattern: "PANIC:"
+    severity: error
+    signature: postgres.panic
+    min_count: 1
+  - pattern: "FATAL:"
+    severity: error
+    signature: postgres.fatal
+    min_count: 1
+  - pattern: "deadlock detected"
+    severity: error
+    signature: postgres.deadlock
+    min_count: 1
+  - pattern: "too many connections|remaining connection slots"
+    severity: warn
+    signature: postgres.conn_limit
+    min_count: 1

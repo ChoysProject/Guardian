@@ -1,7 +1,10 @@
 <th class="connection-col">
-  <form method="post" action="{{ connect_all_path }}" class="mb-0">
-    <button class="connection-refresh" type="submit" title="모든 서버 접속을 다시 봅니다" aria-label="커넥션"{% if not servers %} disabled{% endif %}>
-      <i data-feather="refresh-cw"></i>
-    </button>
-  </form>
+  <div class="connection-head">
+    <span>커넥션 상태</span>
+    <form method="post" action="{{ connect_all_path }}" class="mb-0">
+      <button class="connection-refresh" type="submit" title="모든 서버 접속을 다시 봅니다" aria-label="전체 커넥션"{% if not servers %} disabled{% endif %}>
+        <i data-feather="refresh-cw"></i>
+      </button>
+    </form>
+  </div>
 </th>

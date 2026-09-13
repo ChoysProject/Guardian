@@ -1,0 +1,23 @@
+name: oracle
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: db
+system_label: 데이터베이스
+label: Oracle
+description: Oracle ORA- 오류코드와 리스너/아카이브 문제를 찾습니다.
+targets: ["oracle-.*", "ora-.*"]
+rules:
+  - pattern: "ORA-\\d{4,5}"
+    severity: error
+    signature: oracle.ora_code
+    min_count: 1
+  - pattern: "TNS-|listener (refused|does not)"
+    severity: error
+    signature: oracle.listener
+    min_count: 1
+  - pattern: "archive .* stuck|ORA-00257"
+    severity: error
+    signature: oracle.archive
+    min_count: 1
