@@ -35,8 +35,8 @@ def collect_and_analyze(db: Session, server_ids: list[int] | None = None) -> Col
         try:
             collector = collector_for(server, ssh_timeout=settings.collect.ssh_timeout_seconds)
             with collector:
-                events = _collect_server(db, server, collector)
-            record_events(events)
+                events, files = _collect_server(db, server, collector)
+            record_events(events, server=server.name, files=files)
             total_lines += len(events)
             created = _analyze_server(db, server, events)
             total_findings += created
@@ -59,7 +59,7 @@ def collect_and_analyze(db: Session, server_ids: list[int] | None = None) -> Col
     return run
 
 
-def _collect_server(db: Session, server: Server, collector) -> list:
+def _collect_server(db: Session, server: Server, collector) -> tuple[list, int]:
     patterns = parse_json_list(server.log_paths)
     expanded = expand_log_patterns(
         patterns,
@@ -121,7 +121,7 @@ def _collect_server(db: Session, server: Server, collector) -> list:
                     )
                 )
     db.flush()
-    return events
+    return events, len(resolved)
 
 
 def _analyze_server(db: Session, server: Server, events: list) -> int:

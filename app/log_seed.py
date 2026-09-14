@@ -18,14 +18,13 @@ def test_log_relative_path(server_name: str) -> str:
 
 
 def sample_log_text(server_name: str, when: datetime | None = None, systems: list[str] | None = None) -> str:
-    """공통 규칙과, 고른 시스템(EAI/MCI) 규칙이 잡을 시험 로그."""
+    """공통 규칙이 잡을 시험 로그."""
     tz = ZoneInfo(settings.app.timezone)
     now = when or datetime.now(tz)
     stamp = now.strftime("%Y-%m-%d %H:%M:%S")
     months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
     syslog = f"{months[now.month - 1]} {now.day:2d} {now.strftime('%H:%M:%S')}"
     host = server_name or "guardian-test"
-    picked = {str(item).strip().lower() for item in (systems or []) if str(item).strip()}
     lines = [
         f"{stamp} INFO [api] Guardian test log seed started",
         f"{stamp} INFO [api] health check ok",
@@ -43,24 +42,6 @@ def sample_log_text(server_name: str, when: datetime | None = None, systems: lis
             f"{stamp} ERROR [disk] No space left on device /var",
         ]
     )
-    lower = host.lower()
-    if lower.startswith("eai") or "eai" in picked:
-        lines.extend(
-            [
-                f"{stamp} ERROR [imap] INZENT iMAP Adapter FILE_OUT failed",
-                f"{stamp} ERROR [eai] Channel SAP down",
-                f"{stamp} ERROR [eai] Transaction timeout on ORDERS",
-                f"{stamp} ERROR [eai] 인터페이스 실패 EAI-501",
-            ]
-        )
-    if lower.startswith("mci") or "mci" in picked:
-        lines.extend(
-            [
-                f"{stamp} ERROR [mci] MCI 012 mapping failed",
-                f"{stamp} ERROR [mci] interface timeout 대외기관",
-                f"{stamp} ERROR [mci] connection reset by peer",
-            ]
-        )
     lines.append(f"{stamp} INFO [batch] guardian test log seed finished")
     return "\n".join(lines) + "\n"
 

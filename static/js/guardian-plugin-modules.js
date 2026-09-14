@@ -1,5 +1,6 @@
 (function () {
-  var preview = document.getElementById("script");
+  var preview = document.getElementById("script-preview") || document.getElementById("script");
+  var scriptField = document.getElementById("script");
   var checks = Array.prototype.slice.call(document.querySelectorAll(".module-check"));
   var list = document.getElementById("plugin-instance-list");
   var addButton = document.getElementById("plugin-instance-add");
@@ -22,6 +23,18 @@
   function pluginName() {
     var el = document.getElementById("name") || document.getElementById("plugin-name");
     return el ? (el.value || "").trim() : "";
+  }
+
+  function setScript(text) {
+    var body = text || "";
+    if (preview.tagName === "TEXTAREA" || preview.tagName === "INPUT") {
+      preview.value = body;
+    } else {
+      preview.textContent = body;
+    }
+    if (scriptField && scriptField !== preview) {
+      scriptField.value = body;
+    }
   }
 
   function previewParams() {
@@ -53,7 +66,7 @@
       .then(function (res) { return res.json(); })
       .then(function (data) {
         if (data && data.script) {
-          preview.value = data.script;
+          setScript(data.script);
         }
       })
       .catch(function () {});
@@ -83,6 +96,9 @@
     var input = row.querySelector(".plugin-instance-name");
     if (input) {
       input.addEventListener("input", schedule);
+      input.addEventListener("keydown", function (ev) {
+        ev.stopPropagation();
+      });
     }
   }
 
@@ -101,6 +117,19 @@
   var nameBox = document.getElementById("name");
   if (nameBox) {
     nameBox.addEventListener("input", schedule);
+    nameBox.addEventListener("keydown", function (ev) {
+      ev.stopPropagation();
+    });
+  }
+
+  var form = preview.closest("form");
+  if (form) {
+    form.addEventListener("keydown", function (ev) {
+      var t = ev.target;
+      if (t && t.closest && t.closest("input, textarea, select")) {
+        ev.stopPropagation();
+      }
+    });
   }
 
   if (list) {
@@ -112,7 +141,7 @@
       row.className = "col-md-4 mb-2 plugin-instance-item";
       row.innerHTML =
         '<div class="input-group input-group-sm">' +
-        '<input class="form-control plugin-instance-name" name="plugin_instances" placeholder="프로세스 이름">' +
+        '<input class="form-control plugin-instance-name" name="plugin_instances" placeholder="프로세스 이름" spellcheck="false" autocomplete="off" autocapitalize="off" lang="en">' +
         '<button class="btn btn-outline-secondary plugin-instance-remove" type="button" aria-label="빼기">−</button>' +
         "</div>";
       bindRow(row);

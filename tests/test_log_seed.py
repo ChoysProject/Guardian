@@ -11,10 +11,8 @@ def test_sample_log_text_hits_builtin_rules():
     assert "No space left on device" in text
     assert "Connection refused" in text
     assert "Sep 13 19:05:03" in text
-    eai = sample_log_text("eai-01")
-    assert "INZENT" in eai
-    mci = sample_log_text("app-01", systems=["mci"])
-    assert "MCI 012" in mci
+    assert "INZENT" not in text
+    assert "MCI 012" not in sample_log_text("eai-01")
 
 
 def test_write_local_test_log_appends_and_attaches(tmp_path, monkeypatch):

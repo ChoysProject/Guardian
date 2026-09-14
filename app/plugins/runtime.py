@@ -11,15 +11,13 @@ logger = logging.getLogger(__name__)
 
 CATEGORY_ORDER = {
     "common": 0,
-    "os": 1,
+    "app": 1,
     "web": 2,
     "was": 3,
-    "app": 4,
-    "db": 5,
-    "mq": 6,
-    "cache": 7,
-    "eai": 8,
-    "mci": 9,
+    "db": 4,
+    "mq": 5,
+    "cache": 6,
+    "os": 7,
     "custom": 10,
 }
 

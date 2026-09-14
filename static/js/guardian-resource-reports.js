@@ -313,9 +313,6 @@
     } catch (_err) {
       currentReports = [];
     }
-    if (!currentReports.length) {
-      return;
-    }
     currentServer = card.getAttribute("data-server") || "서버";
     showList();
     bootstrap.Modal.getOrCreateInstance(modalEl).show();

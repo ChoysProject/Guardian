@@ -550,7 +550,9 @@ def test_resource_server_save_keeps_key_when_auth_blank():
                 follow_redirects=True,
             )
             assert saved.status_code == 200
-            assert "ssh-ed25519" in saved.text
+            assert "keykeep-01" in saved.text
+            assert "저장했습니다" in saved.text
+            assert "/servers/resources" in str(saved.url)
             with SessionLocal() as db:
                 server = db.get(Server, server_id)
                 assert server.host == "172.20.193.4"
@@ -615,7 +617,9 @@ def test_log_server_key_edit_and_existing_resource():
                 follow_redirects=True,
             )
             assert saved.status_code == 200
-            assert "ssh-ed25519" in saved.text
+            assert "logkey-01" in saved.text
+            assert "저장했습니다" in saved.text
+            assert "/servers/logs" in str(saved.url)
             with SessionLocal() as db:
                 server = db.get(Server, log_id)
                 assert server.host == "10.0.0.51"
@@ -818,10 +822,13 @@ def test_connect_many_counts(monkeypatch):
         assert "리소스 및 성능 쉘 스크립트" in page.text
         assert "resource_basic" in page.text
         assert "plugin-add" in page.text
+        assert "plugin-card" in page.text
+        assert "CPU" in page.text
         assert "cpu_usage" in page.text
         assert "mem_usage" in page.text
         assert "인스턴스 검색" in page.text
         assert "placeholder=\"프로세스 이름\"" in page.text
+        assert 'id="script-preview"' in page.text
         assert "qry-api" not in page.text
         assert "금지 명령어" not in page.text
         assert "모든 서버" not in page.text
@@ -933,7 +940,10 @@ def test_resource_upload_and_weekly_report(monkeypatch):
         assert "guardian-ui.js" in generated.text
         assert "data-reports=" in generated.text
         assert "CPU" in generated.text
-        assert "다시 만들기" in generated.text
+        assert "보고서 생성" in generated.text
+        assert "다시 만들기" not in generated.text
+        assert "자료 있는 서버 모두 만들기" not in generated.text
+        assert 'href="/servers/resources/' in generated.text
         assert "추이 보고서 생성" not in generated.text
         with SessionLocal() as db:
             stored = db.query(Report).filter(Report.plugin == "resource_report:demo-local").first()
@@ -1011,6 +1021,8 @@ def test_server_script_edit_and_download():
                 follow_redirects=True,
             )
             assert saved.status_code == 200
+            assert "저장했습니다" in saved.text
+            assert "script_test" in saved.text
             assert plugin_editor.read_script(4, "script_test").startswith("#!/bin/bash")
 
             # 다운로드는 스크립트이름/collect.sh zip 이고, 서버 값이 채워진다

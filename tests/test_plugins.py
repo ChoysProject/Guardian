@@ -1,7 +1,7 @@
 from app.config import ROOT
 from app.pipeline.normalize import parse_text
 from app.plugins.loader import load_manifests, targets_match
-from app.plugins.runtime import assigned_plugins, run_stage1, run_stage2
+from app.plugins.runtime import assigned_plugins, catalog_plugins, custom_plugins, run_stage1
 from app.plugins.types import PluginManifest
 
 
@@ -10,8 +10,8 @@ def test_loads_bundled_plugins():
     assert "common" in names
     assert "auth_failures" in names
     assert "disk_full" in names
-    assert "eai" in names
-    assert "mci" in names
+    assert "java" in names
+    assert "python" in names
     assert "daily_report" in names
     assert "server_report" in names
     assert "nginx" in names
@@ -20,10 +20,13 @@ def test_loads_bundled_plugins():
     assert "kafka" in names
     assert "springboot" in names
     assert "eai_report" in names
+    assert "eai" not in names
+    assert "mci" not in names
     stages = {item.name: item.stage for item in load_manifests()}
     assert stages["nginx"] == 1
     assert stages["oracle"] == 1
-    assert stages["eai"] == 1
+    assert stages["java"] == 1
+    assert stages["python"] == 1
     assert stages["common"] == 1
 
 
@@ -49,38 +52,39 @@ def test_targets_match_wildcard():
     assert not targets_match(manifest, "demo-local")
 
 
-def test_stage1_plugin_and_eai_isolation():
-    text = (ROOT / "sample_logs" / "demo.log").read_text(encoding="utf-8")
-    events = parse_text(text, default_host="demo-local")
-    stage1 = run_stage1("demo-local", "demo-local", events)
-    assert any(str(item.get("plugin", "")).startswith("stage1.") for item in stage1)
-    eai_events = parse_text(
-        "2026-08-26 10:00:00 ERROR Adapter inbound failed for channel FOO\n",
-        default_host="eai-01",
-    )
-    eai = run_stage1("eai-01", "eai-01", eai_events)
-    demo = run_stage1("demo-local", "demo-local", eai_events)
-    assert any(item["signature"] == "eai.adapter_failed" for item in eai)
-    assert not any(item["signature"] == "eai.adapter_failed" for item in demo)
+def test_catalog_is_common_runtimes_not_eai_mci():
+    catalog = {item.name for item in catalog_plugins()}
+    custom = {item.name for item in custom_plugins()}
+    assert "java" in catalog
+    assert "python" in catalog
+    assert "springboot" in catalog
+    assert "nginx" in catalog
+    assert "oracle" in catalog
+    assert "eai" not in catalog
+    assert "mci" not in catalog
+    assert "eai" not in custom
+    assert "mci" not in custom
 
 
-def test_server_selected_system_plugins():
+def test_java_and_python_plugins():
     events = parse_text(
-        "2026-08-26 10:00:00 ERROR INZENT iMAP Adapter inbound failed\n"
-        "2026-08-26 10:00:01 ERROR MCI 012 interface timeout\n",
-        default_host="prod-was",
+        "2026-08-26 10:00:00 ERROR java.lang.NullPointerException at com.example.App\n"
+        "2026-08-26 10:00:01 ERROR java.lang.OutOfMemoryError: Java heap space\n"
+        "2026-08-26 10:00:02 ERROR Traceback (most recent call last):\n"
+        "2026-08-26 10:00:03 ERROR ModuleNotFoundError: No module named 'psycopg2'\n",
+        default_host="app-01",
     )
-    by_name = run_stage1("prod-was", "prod-was", events)
-    assert not any(str(item.get("signature", "")).startswith("eai.") for item in by_name)
-    assert not any(str(item.get("signature", "")).startswith("mci.") for item in by_name)
-
-    eai = run_stage1("prod-was", "prod-was", events, selected=["eai"])
-    assert any(str(item.get("signature", "")).startswith("eai.") for item in eai)
-    assert not any(str(item.get("signature", "")).startswith("mci.") for item in eai)
-
-    mci = run_stage1("prod-was", "prod-was", events, selected=["mci"])
-    assert any(item["signature"] in {"mci.code_012", "mci.error_code", "mci.timeout"} for item in mci)
-    assert not any(str(item.get("signature", "")).startswith("eai.") for item in mci)
+    none = run_stage1("prod-01", "prod-01", events)
+    assert not any(item.get("plugin") == "stage1.java" for item in none)
+    assert not any(item.get("plugin") == "stage1.python" for item in none)
+    jvm = run_stage1("prod-01", "prod-01", events, selected=["java"])
+    assert any(item["signature"] == "java.npe" for item in jvm)
+    assert any(item["signature"] == "java.oom" for item in jvm)
+    assert not any(item.get("plugin") == "stage1.python" for item in jvm)
+    py = run_stage1("prod-01", "prod-01", events, selected=["python"])
+    assert any(item["signature"] == "python.traceback" for item in py)
+    assert any(item["signature"] == "python.missing" for item in py)
+    assert not any(item.get("plugin") == "stage1.java" for item in py)
 
 
 def test_catalog_plugins_run_only_when_selected():
@@ -116,6 +120,6 @@ def test_assigned_plugins_skip_global_and_match_server():
     assert "daily_report" not in demo
     assert "server_report" not in demo
     eai = {item.name for item in assigned_plugins("eai-01")}
-    assert "eai" in eai
-    assert "eai_report" in eai
+    assert "eai" not in eai
     assert "mci" not in eai
+    assert "eai_report" in eai

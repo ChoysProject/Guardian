@@ -239,6 +239,57 @@ body {
 .server-report-card .report-summary {
   max-width: 14rem;
 }
+.plugin-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.plugin-toolbar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+.plugin-toolbar-search .form-control {
+  max-width: 22rem;
+}
+.plugin-toolbar-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.plugin-card .tag:not(.ok):not(.warn):not(.danger) {
+  background: #f2f4f7;
+  color: #667085;
+}
+.plugin-card .plugin-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.plugin-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: #344054;
+  font-size: 11px;
+  font-weight: 650;
+}
+.plugin-group-title {
+  font-size: 0.95rem;
+  font-weight: 650;
+  margin: 1.25rem 0 0.6rem;
+}
+.plugin-group-title:first-child {
+  margin-top: 0.25rem;
+}
 .report-fidget {
   position: fixed;
   inset: 0;
