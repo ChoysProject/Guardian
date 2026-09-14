@@ -1,0 +1,27 @@
+name: python
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: app
+system_label: 애플리케이션
+label: Python
+description: Python 공통 로그. Traceback, ModuleNotFound, 타입/키 오류처럼 인터프리터가 찍는 예외를 찾습니다.
+targets: ["python-.*", "py-.*", "app-.*"]
+rules:
+  - pattern: "Traceback \\(most recent call last\\)"
+    severity: error
+    signature: python.traceback
+    min_count: 1
+  - pattern: "(ModuleNotFoundError|ImportError|FileNotFoundError):"
+    severity: error
+    signature: python.missing
+    min_count: 1
+  - pattern: "(KeyError|ValueError|TypeError|AttributeError|IndexError):"
+    severity: error
+    signature: python.value
+    min_count: 1
+  - pattern: "(TimeoutError|PermissionError|RuntimeError|OSError):"
+    severity: error
+    signature: python.runtime
+    min_count: 1

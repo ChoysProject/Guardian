@@ -23,7 +23,7 @@ from app.db import dump_json, get_db, parse_json_list
 from app.models import CollectRun, Finding, Report, Server, init_db
 from app.charts import chart_summary
 from app.cursors import PAGE_SIZE, migrate_from_db, page_cursors
-from app.pipeline.reports import generate_reports
+from app.pipeline.reports import generate_reports, group_log_report_rows
 from app.resources import (
     SAMPLE_JSON,
     delete_snapshot,
@@ -57,6 +57,7 @@ from app.resource_script import (
     clean_search_names,
     default_modules,
     script_folder_name,
+    script_summary,
 )
 from app.resource_collect import (
     collect_server,
@@ -218,6 +219,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         resource_reports,
         registered=[server.name for server in resource_servers],
         snapshot_names=snapshot_names,
+        server_ids={server.name: server.id for server in servers},
     )
     resource_attention = sum(
         1 for row in report_groups if (row.get("metrics") or {}).get("level") in {"warn", "danger"}
@@ -672,7 +674,8 @@ async def resource_server_save(
     server.plugins = dump_plugins(plugins)
     await _apply_auth(server, auth_type, password, key_path, key_file)
     db.commit()
-    return RedirectResponse(f"/servers/resources/{server_id}/edit", status_code=303)
+    notice = quote(f"{server.name} 서버를 저장했습니다.")
+    return RedirectResponse(f"/servers/resources?notice={notice}", status_code=303)
 
 
 @app.post("/servers/resources/{server_id}/make-key")
@@ -750,7 +753,8 @@ async def log_server_save(
     server.custom_plugins = dump_plugins(stage2_plugins)
     await _apply_auth(server, auth_type, password, key_path, key_file)
     db.commit()
-    return RedirectResponse(f"/servers/logs/{server_id}/edit", status_code=303)
+    notice = quote(f"{server.name} 서버를 저장했습니다.")
+    return RedirectResponse(f"/servers/logs?notice={notice}", status_code=303)
 
 
 @app.post("/servers/logs/{server_id}/make-key")
@@ -1154,31 +1158,16 @@ def reports_page(request: Request, db: Session = Depends(get_db)):
         for item in db.query(Report).order_by(Report.created_at.desc()).all()
         if not is_resource_plugin(item.plugin)
     ]
-    enabled_servers = [
-        item
-        for item in db.query(Server).filter(Server.enabled.is_(True)).order_by(Server.name).all()
-        if get_modes(item.name)["logs"]
-    ]
-    finding_counts: dict[int, int] = {}
-    for (server_id,) in db.query(Finding.server_id).all():
-        finding_counts[server_id] = finding_counts.get(server_id, 0) + 1
-    latest: dict[str, Report] = {}
-    for item in items:
-        name = _log_report_server(item.plugin)
-        if name and name not in latest:
-            latest[name] = item
-    report_rows = [
-        {
-            "server": server,
-            "findings": finding_counts.get(server.id, 0),
-            "latest": latest.get(server.name),
-        }
-        for server in enabled_servers
-    ]
+    enabled_servers = _log_servers(db)
+    findings = db.query(Finding).all()
     return templates.TemplateResponse(
         request,
         "reports.html",
-        _ctx(request, reports=items, enabled_servers=enabled_servers, report_rows=report_rows),
+        _ctx(
+            request,
+            reports=items,
+            report_groups=group_log_report_rows(items, enabled_servers, findings),
+        ),
     )
 
 
@@ -1201,7 +1190,9 @@ def reports_resources_page(request: Request, db: Session = Depends(get_db)):
         if is_resource_plugin(item.plugin)
     ]
     snapshot_names = snapshot_server_names()
-    registered = [server.name for server in _resource_servers(db)]
+    resource_servers = _resource_servers(db)
+    registered = [server.name for server in resource_servers]
+    named_ids = {server.name: server.id for server in db.query(Server).all()}
     return templates.TemplateResponse(
         request,
         "reports_resources.html",
@@ -1209,9 +1200,11 @@ def reports_resources_page(request: Request, db: Session = Depends(get_db)):
             request,
             reports=items,
             report_groups=group_resource_report_rows(
-                items, registered=registered, snapshot_names=snapshot_names
+                items,
+                registered=registered,
+                snapshot_names=snapshot_names,
+                server_ids=named_ids,
             ),
-            resource_servers=snapshot_names,
             days=7,
         ),
     )
@@ -1283,7 +1276,7 @@ def _report_download_stem(item: Report) -> str:
 @app.get("/reports/{report_id}/embed", response_class=HTMLResponse)
 def report_embed(report_id: int, db: Session = Depends(get_db)):
     item = db.get(Report, report_id)
-    if not item or not is_resource_plugin(item.plugin):
+    if not item:
         raise HTTPException(404)
     if item.html_path and Path(item.html_path).exists():
         return HTMLResponse(Path(item.html_path).read_text(encoding="utf-8"))
@@ -1293,7 +1286,7 @@ def report_embed(report_id: int, db: Session = Depends(get_db)):
 @app.get("/reports/{report_id}/markdown")
 def report_markdown(report_id: int, db: Session = Depends(get_db)):
     item = db.get(Report, report_id)
-    if not item or not is_resource_plugin(item.plugin):
+    if not item:
         raise HTTPException(404)
     path = Path(item.markdown_path or "")
     if not path.exists():
@@ -1474,6 +1467,10 @@ def _plugins_page(request: Request, kind: str, **extra):
         "module_catalog": resource_catalog() if kind == "resources" else [],
         "selected_modules": default_modules() if kind == "resources" else [],
         "preview_script": "",
+        "script_summaries": {
+            item.name: script_summary(item.config) for item in items if item.stage == 4
+        },
+        "list_stage": "",
     }
     if kind == "resources" and not extra.get("preview_script"):
         script, _ = build_script(payload["selected_modules"], plugin_name=payload.get("form_name") or "resource")
@@ -1483,13 +1480,13 @@ def _plugins_page(request: Request, kind: str, **extra):
 
 
 @app.get("/plugins/resources", response_class=HTMLResponse)
-def plugins_resources_page(request: Request):
-    return _plugins_page(request, "resources")
+def plugins_resources_page(request: Request, notice: str = ""):
+    return _plugins_page(request, "resources", notice=notice)
 
 
 @app.get("/plugins/logs", response_class=HTMLResponse)
-def plugins_logs_page(request: Request):
-    return _plugins_page(request, "logs")
+def plugins_logs_page(request: Request, notice: str = "", stage: str = ""):
+    return _plugins_page(request, "logs", notice=notice, list_stage=stage)
 
 
 @app.get("/plugins/resource-plugins", response_class=HTMLResponse)
@@ -1836,7 +1833,10 @@ def plugin_save(
             ),
             status_code=400,
         )
-    return RedirectResponse("/plugins/resources" if stage == 4 else "/plugins/logs", status_code=303)
+    notice = quote("플러그인을 저장했습니다.")
+    if stage == 4:
+        return RedirectResponse(f"/plugins/resources?notice={notice}", status_code=303)
+    return RedirectResponse(f"/plugins/logs?notice={notice}&stage={stage}", status_code=303)
 
 
 @app.get("/settings", response_class=HTMLResponse)

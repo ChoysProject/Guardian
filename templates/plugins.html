@@ -3,22 +3,23 @@
 {% set heading = title %}
 {% block content %}
 {% if kind == "resources" %}
-<div class="card mb-4">
-  <div class="card-header d-flex align-items-center justify-content-between">
-    <span>수집 스크립트</span>
-    <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#plugin-add" aria-expanded="{{ 'true' if error else 'false' }}" aria-controls="plugin-add">
-      수집 스크립트 추가
-    </button>
-  </div>
-  <div class="collapse {% if error %}show{% endif %}" id="plugin-add">
-    <div class="card-body border-bottom">
+<div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+  <p class="text-muted small mb-0">체크한 모듈로 수집 스크립트를 만듭니다. 상자마다 무엇을 모으는지 보입니다.</p>
+  <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#plugin-add" aria-expanded="{{ 'true' if error else 'false' }}" aria-controls="plugin-add">
+    수집 스크립트 추가
+  </button>
+</div>
+<div class="collapse mb-3 {% if error %}show{% endif %}" id="plugin-add">
+  <div class="card">
+    <div class="card-header">수집 스크립트 추가</div>
+    <div class="card-body">
       <form method="post" action="/plugins/new" id="resource-plugin-form">
         <input type="hidden" name="stage" value="4">
         <input type="hidden" name="all_servers" value="1">
         <div class="row gx-3">
           <div class="col-md-4 mb-3">
             <label class="small mb-1" for="name">이름 (영문/숫자/_-)</label>
-            <input class="form-control" id="name" name="name" required value="{{ form_name }}" placeholder="영문·숫자·밑줄만 쓰는 식별 이름">
+            <input class="form-control" id="name" name="name" required value="{{ form_name }}" placeholder="영문·숫자·밑줄만 쓰는 식별 이름" spellcheck="false" autocomplete="off" autocapitalize="off" lang="en">
           </div>
           <div class="col-md-8 mb-3">
             <label class="small mb-1" for="description">설명</label>
@@ -33,123 +34,185 @@
       </form>
     </div>
   </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead><tr><th>이름</th><th></th></tr></thead>
-        <tbody>
-        {% for item in stage4 %}
-          <tr>
-            <td>{{ item.name }}<div class="text-muted small">{{ item.description }}</div></td>
-            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a></td>
-          </tr>
-        {% else %}
-          <tr><td colspan="2" class="text-muted p-4">아직 리소스 및 성능 쉘 스크립트가 없습니다.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
+</div>
+{% if stage4 %}
+<div class="server-report-grid plugin-card-grid">
+  {% for item in stage4 %}
+  {% set summary = script_summaries.get(item.name) or {} %}
+  <article class="server-report-card plugin-card">
+    <div class="server-report-card-head">
+      <div class="min-w-0">
+        <div class="server-report-name">{{ item.name }}</div>
+        <div class="small text-muted text-truncate report-summary">{{ item.description or "수집 스크립트" }}</div>
+      </div>
     </div>
-  </div>
+    {% if summary.chips or summary.instances %}
+    <div class="plugin-chips">
+      {% for chip in summary.chips %}
+      <span class="plugin-chip">{{ chip }}</span>
+      {% endfor %}
+      {% for inst in summary.instances %}
+      <span class="plugin-chip">{{ inst }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="server-report-card-actions">
+      <a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a>
+    </div>
+  </article>
+  {% endfor %}
 </div>
 {% else %}
-<div class="alert alert-info" role="alert">
-  여기서는 규칙을 만들고, <strong>적용은 로그 수집 대상 서버</strong>에서 고릅니다.
-  1단계는 WAS, Spring Boot, Oracle, PostgreSQL 같은 공통 플러그인입니다.
-  2단계는 세션 만료·메모리 부족·교착처럼 상황별 세부 플러그인입니다.
-  3단계는 로그 보고서 플러그인으로, 보고서가 어떤 식으로 나올지를 작성합니다.
+<div class="card">
+  <div class="card-body text-muted">아직 리소스 및 성능 쉘 스크립트가 없습니다.</div>
 </div>
-<div class="mb-3">
-  <a class="btn btn-primary" href="/plugins/new?stage=2">2단계 세부 플러그인 추가</a>
-  <a class="btn btn-outline-primary" href="/plugins/new?stage=1">1단계 공통 플러그인 추가</a>
-  <a class="btn btn-outline-primary" href="/plugins/new?stage=3">3단계 로그 보고서 플러그인 추가</a>
-</div>
-<h2 class="h5 mb-2">1단계 · 공통 플러그인</h2>
-{% if catalog_groups %}
-{% for _system, label, items in catalog_groups %}
-<div class="card mb-3">
-  <div class="card-header">{{ label }}</div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead><tr><th>플러그인</th><th>적용</th><th>상태</th><th></th></tr></thead>
-        <tbody>
-        {% for item in items %}
-          <tr>
-            <td>
-              {{ item.label or item.name }}
-              <div class="text-muted small">{{ item.description }}</div>
-            </td>
-            <td class="small">로그 수집 서버에서 선택</td>
-            <td>{% if item.enabled %}<span class="badge bg-success-soft text-success">ON</span>{% else %}<span class="badge bg-light text-muted">OFF</span>{% endif %}</td>
-            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">규칙 수정</a></td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-{% endfor %}
-{% else %}
-<div class="card mb-4"><div class="card-body text-muted">아직 1단계 공통 플러그인이 없습니다.</div></div>
 {% endif %}
-<h2 class="h5 mb-2">2단계 · 세부 플러그인</h2>
-{% if custom_groups %}
-{% for _system, label, items in custom_groups %}
-<div class="card mb-3">
-  <div class="card-header">{{ label }}</div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead><tr><th>플러그인</th><th>적용</th><th>상태</th><th></th></tr></thead>
-        <tbody>
-        {% for item in items %}
-          <tr>
-            <td>
-              {{ item.label or item.name }}
-              <div class="text-muted small">{{ item.description }}</div>
-            </td>
-            <td class="small">로그 수집 서버에서 선택</td>
-            <td>{% if item.enabled %}<span class="badge bg-success-soft text-success">ON</span>{% else %}<span class="badge bg-light text-muted">OFF</span>{% endif %}</td>
-            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">규칙 수정</a></td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+{% else %}
+<div class="plugin-toolbar">
+  <div class="plugin-toolbar-search">
+    <input class="form-control form-control-sm" id="plugin-search" type="search" placeholder="이름·설명 검색" autocomplete="off">
+    <div class="btn-group btn-group-sm" role="group" aria-label="단계 보기" data-initial-stage="{{ list_stage or '1' }}">
+      <button class="btn btn-primary" type="button" data-stage-filter="1">1단계</button>
+      <button class="btn btn-outline-secondary" type="button" data-stage-filter="2">2단계</button>
+      <button class="btn btn-outline-secondary" type="button" data-stage-filter="3">3단계</button>
     </div>
+  </div>
+  <div class="plugin-toolbar-add">
+    <a class="btn btn-sm btn-outline-primary" href="/plugins/new?stage=1">1단계 추가</a>
+    <a class="btn btn-sm btn-outline-primary" href="/plugins/new?stage=2">2단계 추가</a>
+    <a class="btn btn-sm btn-outline-primary" href="/plugins/new?stage=3">3단계 추가</a>
   </div>
 </div>
-{% endfor %}
-{% else %}
-<div class="card mb-4"><div class="card-body text-muted">아직 2단계 세부 플러그인이 없습니다. 문구를 넣거나 수집한 ERROR 줄에서 만듭니다. 적용은 로그 수집 대상 서버에서 고릅니다.</div></div>
-{% endif %}
-<div class="card mb-4">
-  <div class="card-header">3단계 · 로그 보고서 플러그인</div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead><tr><th>이름</th><th>묶는 단위</th><th>적용</th><th>상태</th><th></th></tr></thead>
-        <tbody>
-        {% for item in stage3 %}
-          <tr>
-            <td>{{ item.name }}<div class="text-muted small">{{ item.description }}</div></td>
-            <td>{{ "서버마다 파일" if item.config.get("mode") == "per_server" else "한 파일에 모음" }}</td>
-            <td class="small">보고서 화면에서 서버 선택</td>
-            <td>{% if item.enabled %}<span class="badge bg-success-soft text-success">ON</span>{% else %}<span class="badge bg-light text-muted">OFF</span>{% endif %}</td>
-            <td><a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a></td>
-          </tr>
-        {% else %}
-          <tr><td colspan="5" class="text-muted p-4">아직 3단계 로그 보고서 플러그인이 없습니다. 제목·묶는 단위·안내를 여기서 작성합니다.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
+<p class="text-muted small mb-3">규칙을 만들고, 적용은 로그 수집 대상 서버에서 고릅니다. 처음에는 1단계 공통 플러그인만 보여 줍니다.</p>
+
+<div data-stage-pane="1">
+  <h2 class="h5 mb-3">1단계 · 공통 플러그인</h2>
+  {% if catalog_groups %}
+  {% for _system, label, items in catalog_groups %}
+  <div data-plugin-group>
+    <h3 class="plugin-group-title">{{ label }}</h3>
+    <div class="server-report-grid plugin-card-grid">
+      {% for item in items %}
+      <article
+        class="server-report-card plugin-card"
+        data-plugin-card
+        data-search="{{ ((item.label or item.name) ~ ' ' ~ item.name ~ ' ' ~ (item.description or '') ~ ' ' ~ (item.system_label or '')) | e }}"
+      >
+        <div class="server-report-card-head">
+          <div class="min-w-0">
+            <div class="server-report-name">{{ item.label or item.name }}</div>
+            <div class="small text-muted text-truncate report-summary">{{ item.description }}</div>
+          </div>
+          {% if item.enabled %}
+          <span class="tag ok">ON</span>
+          {% else %}
+          <span class="tag">OFF</span>
+          {% endif %}
+        </div>
+        <div class="plugin-chips">
+          <span class="plugin-chip">{{ item.system_label or label }}</span>
+          {% if item.rules %}<span class="plugin-chip">규칙 {{ item.rules | length }}개</span>{% endif %}
+        </div>
+        <div class="server-report-card-actions">
+          <a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">규칙 수정</a>
+        </div>
+      </article>
+      {% endfor %}
     </div>
   </div>
+  {% endfor %}
+  <p class="text-muted small d-none mt-3" data-plugin-empty-search>검색 결과가 없습니다.</p>
+  {% else %}
+  <div class="card"><div class="card-body text-muted">아직 1단계 공통 플러그인이 없습니다.</div></div>
+  {% endif %}
+</div>
+
+<div class="d-none" data-stage-pane="2">
+  <h2 class="h5 mb-3">2단계 · 세부 플러그인</h2>
+  {% if custom_groups %}
+  {% for _system, label, items in custom_groups %}
+  <div data-plugin-group>
+    <h3 class="plugin-group-title">{{ label }}</h3>
+    <div class="server-report-grid plugin-card-grid">
+      {% for item in items %}
+      <article
+        class="server-report-card plugin-card"
+        data-plugin-card
+        data-search="{{ ((item.label or item.name) ~ ' ' ~ item.name ~ ' ' ~ (item.description or '') ~ ' ' ~ (item.system_label or '')) | e }}"
+      >
+        <div class="server-report-card-head">
+          <div class="min-w-0">
+            <div class="server-report-name">{{ item.label or item.name }}</div>
+            <div class="small text-muted text-truncate report-summary">{{ item.description }}</div>
+          </div>
+          {% if item.enabled %}
+          <span class="tag ok">ON</span>
+          {% else %}
+          <span class="tag">OFF</span>
+          {% endif %}
+        </div>
+        <div class="plugin-chips">
+          <span class="plugin-chip">{{ item.system_label or label }}</span>
+          {% if item.rules %}<span class="plugin-chip">규칙 {{ item.rules | length }}개</span>{% endif %}
+        </div>
+        <div class="server-report-card-actions">
+          <a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">규칙 수정</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  <p class="text-muted small d-none mt-3" data-plugin-empty-search>검색 결과가 없습니다.</p>
+  {% else %}
+  <div class="card"><div class="card-body text-muted">아직 2단계 세부 플러그인이 없습니다. 문구를 넣거나 수집한 ERROR 줄에서 만듭니다. 적용은 로그 수집 대상 서버에서 고릅니다.</div></div>
+  {% endif %}
+</div>
+
+<div class="d-none" data-stage-pane="3">
+  <h2 class="h5 mb-3">3단계 · 로그 보고서 플러그인</h2>
+  {% if stage3 %}
+  <div data-plugin-group>
+    <h3 class="plugin-group-title">로그 보고서</h3>
+    <div class="server-report-grid plugin-card-grid">
+      {% for item in stage3 %}
+      <article
+        class="server-report-card plugin-card"
+        data-plugin-card
+        data-search="{{ (item.name ~ ' ' ~ (item.description or '') ~ ' 보고서') | e }}"
+      >
+        <div class="server-report-card-head">
+          <div class="min-w-0">
+            <div class="server-report-name">{{ item.name }}</div>
+            <div class="small text-muted text-truncate report-summary">{{ item.description }}</div>
+          </div>
+          {% if item.enabled %}
+          <span class="tag ok">ON</span>
+          {% else %}
+          <span class="tag">OFF</span>
+          {% endif %}
+        </div>
+        <div class="plugin-chips">
+          <span class="plugin-chip">{{ "서버마다 파일" if item.config.get("mode") == "per_server" else "한 파일에 모음" }}</span>
+        </div>
+        <div class="server-report-card-actions">
+          <a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+  <p class="text-muted small d-none mt-3" data-plugin-empty-search>검색 결과가 없습니다.</p>
+  {% else %}
+  <div class="card"><div class="card-body text-muted">아직 3단계 로그 보고서 플러그인이 없습니다. 제목·묶는 단위·안내를 여기서 작성합니다.</div></div>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}
 {% block scripts %}
 {% if kind == "resources" %}
-<script src="/static/js/guardian-plugin-modules.js"></script>
+<script src="/static/js/guardian-plugin-modules.js?v=script-preview-pre-1"></script>
+{% else %}
+<script src="/static/js/guardian-plugin-list.js?v=plugin-cards-2"></script>
 {% endif %}
 {% endblock %}

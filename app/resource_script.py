@@ -725,6 +725,21 @@ def catalog() -> list[dict[str, Any]]:
     return CATEGORIES
 
 
+def script_summary(config: dict[str, Any] | None) -> dict[str, Any]:
+    cfg = config or {}
+    modules = [str(item) for item in (cfg.get("modules") or []) if item]
+    instances = [str(item).strip() for item in (cfg.get("instances") or []) if str(item).strip()]
+    chips: list[str] = []
+    for group in CATEGORIES:
+        if any(item["id"] in modules for item in group["modules"]):
+            chips.append(str(group.get("name") or group.get("id") or ""))
+    return {
+        "chips": [item for item in chips if item],
+        "instances": instances,
+        "module_count": len(modules),
+    }
+
+
 def default_modules() -> list[str]:
     names = []
     for group in CATEGORIES:

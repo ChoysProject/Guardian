@@ -7,12 +7,9 @@
     수집 서버별로 CPU · 메모리 · 디스크만 먼저 봅니다. 박스를 누르면 보고서 목록이 열리고, 목록에서 고르면 상세를 봅니다.
     {% if openai_enabled %}<span class="fw-semibold">AI 총평도 붙습니다.</span>{% else %}<span class="text-muted">AI는 꺼져 있어 규칙 요약만 나옵니다.</span>{% endif %}
   </p>
-  <form class="js-report-generate" method="post" action="/reports/resources/generate">
-    <button class="btn btn-outline-primary" type="submit"{% if not resource_servers %} disabled{% endif %}>자료 있는 서버 모두 만들기</button>
-  </form>
 </div>
 {% include "_resource_server_cards.html" %}
 {% endblock %}
 {% block scripts %}
-<script src="/static/js/guardian-resource-reports.js?v=report-export-1"></script>
+<script src="/static/js/guardian-resource-reports.js?v=report-list-empty-1"></script>
 {% endblock %}

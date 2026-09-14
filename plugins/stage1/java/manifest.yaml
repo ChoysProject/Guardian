@@ -1,0 +1,31 @@
+name: java
+stage: 1
+version: "1.0"
+type: rules
+enabled: true
+system: app
+system_label: 애플리케이션
+label: Java
+description: Java/JVM 공통 로그. NullPointer, 힙 부족, 스레드 예외처럼 언어 런타임이 찍는 오류를 찾습니다.
+targets: ["java-.*", "jvm-.*", "app-.*"]
+rules:
+  - pattern: "java\\.lang\\.OutOfMemoryError|Java heap space|GC overhead"
+    severity: error
+    signature: java.oom
+    min_count: 1
+  - pattern: "java\\.lang\\.NullPointerException"
+    severity: error
+    signature: java.npe
+    min_count: 1
+  - pattern: "java\\.lang\\.(StackOverflowError|ClassNotFoundException|NoClassDefFoundError|IllegalStateException|IllegalArgumentException)"
+    severity: error
+    signature: java.runtime
+    min_count: 1
+  - pattern: "Exception in thread|Uncaught exception|Unhandled exception"
+    severity: error
+    signature: java.uncaught
+    min_count: 1
+  - pattern: "Too many open files"
+    severity: error
+    signature: java.open_files
+    min_count: 1

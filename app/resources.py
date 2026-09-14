@@ -81,6 +81,7 @@ def group_resource_report_rows(
     *,
     registered: list[str] | None = None,
     snapshot_names: list[str] | None = None,
+    server_ids: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     names: list[str] = []
     seen: set[str] = set()
@@ -96,6 +97,7 @@ def group_resource_report_rows(
             names.append(server)
         buckets[server].append(report)
     snap = set(snapshot_names or [])
+    ids = server_ids or {}
     groups = []
     for name in names:
         items = buckets.get(name) or []
@@ -121,13 +123,14 @@ def group_resource_report_rows(
         groups.append(
             {
                 "name": name,
+                "server_id": ids.get(name),
                 "reports": items,
                 "report_items": report_items,
                 "reports_json": json.dumps(report_items, ensure_ascii=False),
                 "latest": latest,
                 "has_data": name in snap,
                 "metrics": metrics,
-                "verdict": verdict or metrics.get("status") or "",
+                "verdict": verdict or metrics.get("verdict") or metrics.get("status") or "",
             }
         )
     return groups
@@ -1304,17 +1307,36 @@ def resource_card_metrics(server: str) -> dict[str, Any]:
     mem_size = ""
     if mem.get("used_mb") is not None and mem.get("total_mb") is not None:
         mem_size = f"{_fmt_mb(mem.get('used_mb'))} / {_fmt_mb(mem.get('total_mb'))}"
+    cpu_text = _fmt_pct(cpu)
+    mem_text = _fmt_pct(mem.get("used_pct"))
+    swap_text = _fmt_pct(swap_pct) if swap_pct is not None else ""
+    disk_text = _fmt_pct(worst.get("last")) if worst else "-"
+    disk_name = _disk_alias(str(worst.get("mount"))) if worst else "디스크"
+    instances_text = f"{live}/{len(instances)}" if instances else ""
+    mem_note = mem_size
+    if mem_size and swap_text:
+        mem_note = f"{mem_size} · 스왑 {swap_text}"
+    elif swap_text:
+        mem_note = f"스왑 {swap_text}"
+    cells = [
+        {"label": "CPU", "value": cpu_text},
+        {"label": "메모리", "value": mem_text, "note": mem_note},
+        {"label": disk_name, "value": disk_text},
+    ]
+    if instances_text:
+        cells.append({"label": "인스턴스", "value": instances_text})
     return {
         "date": last.get("date") or "",
-        "cpu_text": _fmt_pct(cpu),
-        "mem_text": _fmt_pct(mem.get("used_pct")),
+        "cpu_text": cpu_text,
+        "mem_text": mem_text,
         "mem_size": mem_size,
-        "swap_text": _fmt_pct(swap_pct) if swap_pct is not None else "",
-        "disk_text": _fmt_pct(worst.get("last")) if worst else "-",
-        "disk_name": _disk_alias(str(worst.get("mount"))) if worst else "디스크",
-        "instances_text": f"{live}/{len(instances)}" if instances else "",
+        "swap_text": swap_text,
+        "disk_text": disk_text,
+        "disk_name": disk_name,
+        "instances_text": instances_text,
         "level": level,
         "status": labels.get(level, "-"),
+        "cells": cells,
     }
 
 

@@ -25,6 +25,7 @@ def test_health_and_dashboard_and_pipeline():
         assert 'href="/reports"' in home.text
         assert "로그 분석 보고서" in home.text
         assert "로그 분석 보고서 (추후 고도화)" not in home.text
+        assert ">로그분석<" in home.text or "<span>로그분석</span>" in home.text
         assert "리소스 및 성능 플러그인" not in home.text
         assert "리소스 및 성능 쉘 스크립트" in home.text
         assert 'href="/plugins/logs"' in home.text
@@ -61,14 +62,18 @@ def test_health_and_dashboard_and_pipeline():
         reports_page = client.get("/reports")
         assert reports_page.status_code == 200
         assert "demo-local" in reports_page.text
-        assert "선택 생성" in reports_page.text
-        assert "보고서 만들기" in reports_page.text
-        assert "보고서가 어떤 식으로 나올지" in reports_page.text
-        assert "3단계 로그 보고서 플러그인" in reports_page.text
+        assert "보고서 생성" in reports_page.text
+        assert "박스를 누르면" in reports_page.text
+        assert "오늘 보고서 생성" not in reports_page.text
+        assert "선택 생성" not in reports_page.text
+        assert "최근 보고서" not in reports_page.text
+        assert "자료 있는 서버 모두 만들기" not in reports_page.text
         assert 'href="/servers/logs/' in reports_page.text
         assert 'id="reportFidget"' in reports_page.text
         assert "js-report-generate" in reports_page.text
         assert "guardian-report-fidget.js" in reports_page.text
+        assert "guardian-resource-reports.js" in reports_page.text
+        assert "resourceReportModal" in reports_page.text
         assert 'id="guardianConfirmModal"' in reports_page.text
         assert "guardian-ui.js" in reports_page.text
         generated = client.post(
@@ -79,6 +84,25 @@ def test_health_and_dashboard_and_pipeline():
         assert generated.status_code == 200
         assert "보고서" in generated.text
         assert "server_report:demo-local" in generated.text
+        assert "js-report-delete" in generated.text
+        from app.models import Report, SessionLocal
+        with SessionLocal() as db:
+            stored = (
+                db.query(Report)
+                .filter(Report.plugin == "server_report:demo-local")
+                .order_by(Report.id.desc())
+                .first()
+            )
+        assert stored is not None
+        embedded = client.get(f"/reports/{stored.id}/embed")
+        assert embedded.status_code == 200
+        assert "demo-local" in embedded.text
+        assert "Not Found" not in embedded.text
+        markdown = client.get(f"/reports/{stored.id}/markdown")
+        assert markdown.status_code == 200
+        assert "text/markdown" in markdown.headers.get("content-type", "")
+        missing = client.get("/reports/999999/embed")
+        assert missing.status_code == 404
 
         charts = client.get("/api/charts/summary")
         assert charts.status_code == 200
@@ -109,10 +133,23 @@ def test_health_and_dashboard_and_pipeline():
         assert "1단계 · 공통 플러그인" in log_plugins.text
         assert "2단계 · 세부 플러그인" in log_plugins.text
         assert "3단계 · 로그 보고서 플러그인" in log_plugins.text
+        assert 'id="plugin-search"' in log_plugins.text
+        assert "plugin-card" in log_plugins.text
+        assert "애플리케이션" in log_plugins.text
+        assert "웹 서버" in log_plugins.text
+        assert 'data-stage-filter="1"' in log_plugins.text
+        assert 'data-initial-stage="' in log_plugins.text
+        assert 'data-stage-pane="1"' in log_plugins.text
+        assert log_plugins.text.find('href="/plugins/new?stage=1"') < log_plugins.text.find(
+            'href="/plugins/new?stage=2"'
+        ) < log_plugins.text.find('href="/plugins/new?stage=3"')
         assert "세부 에러" not in log_plugins.text
         assert "우리 시스템" not in log_plugins.text
         assert "Nginx" in log_plugins.text
         assert "Oracle" in log_plugins.text
+        assert "Java" in log_plugins.text
+        assert "Python" in log_plugins.text
+        assert "Spring Boot" in log_plugins.text
         new_plugin = client.get("/plugins/new?stage=2&server=demo-local")
         assert new_plugin.status_code == 200
         assert "demo-local_rules" in new_plugin.text
@@ -125,7 +162,8 @@ def test_health_and_dashboard_and_pipeline():
         assert "Too many open files" in new_plugin.text
         listed = client.get("/reports")
         assert "삭제" in listed.text
-        assert "data-confirm=" in listed.text
+        assert "js-report-delete" in listed.text
+        assert "resourceDeleteModal" in listed.text
 
         servers_page = client.get("/servers/logs")
         assert servers_page.status_code == 200
@@ -141,7 +179,11 @@ def test_health_and_dashboard_and_pipeline():
         assert "1단계 공통 플러그인" in servers_page.text
         assert "2단계 세부 플러그인" in servers_page.text
         assert "2단계 우리 시스템" not in servers_page.text
-        assert "EAI (Inzent)" in servers_page.text
+        assert "Java" in servers_page.text
+        assert "Python" in servers_page.text
+        assert "Spring Boot" in servers_page.text
+        assert "EAI (Inzent)" not in servers_page.text
+        assert "MCI 대외인터페이스" not in servers_page.text
         assert "Nginx" in servers_page.text
         created = client.post(
             "/servers/logs",
@@ -168,7 +210,8 @@ def test_health_and_dashboard_and_pipeline():
         plugins_page = client.get("/plugins/logs")
         assert plugins_page.status_code == 200
         assert "2단계" in plugins_page.text
-        assert "eai" in plugins_page.text
+        assert "EAI (Inzent)" not in plugins_page.text
+        assert "Java" in plugins_page.text
         filtered = client.get("/api/checkpoints?offset=0&limit=50&server_id=1")
         assert filtered.status_code == 200
         assert "items" in filtered.json()

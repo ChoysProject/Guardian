@@ -23,7 +23,7 @@
       <div class="row gx-3 mb-3">
         <div class="col-md-6">
           <label class="small mb-1" for="system">그룹 식별자</label>
-          <input class="form-control" id="system" name="system" value="{{ plugin.system }}" placeholder="custom, eai, common">
+          <input class="form-control" id="system" name="system" value="{{ plugin.system }}" placeholder="custom, common">
         </div>
         <div class="col-md-6">
           <label class="small mb-1" for="system_label">그룹에 보일 이름</label>
@@ -120,6 +120,6 @@
 {% endblock %}
 {% block scripts %}
 {% if plugin.stage == 4 %}
-<script src="/static/js/guardian-plugin-modules.js"></script>
+<script src="/static/js/guardian-plugin-modules.js?v=script-preview-pre-1"></script>
 {% endif %}
 {% endblock %}

@@ -54,14 +54,14 @@
     {% for inst in plugin_instances|default([]) %}
     <div class="col-md-4 mb-2 plugin-instance-item">
       <div class="input-group input-group-sm">
-        <input class="form-control plugin-instance-name" name="plugin_instances" value="{{ inst }}" placeholder="프로세스 이름">
+        <input class="form-control plugin-instance-name" name="plugin_instances" value="{{ inst }}" placeholder="프로세스 이름" spellcheck="false" autocomplete="off" autocapitalize="off" lang="en">
         <button class="btn btn-outline-secondary plugin-instance-remove" type="button" aria-label="빼기">−</button>
       </div>
     </div>
     {% else %}
     <div class="col-md-4 mb-2 plugin-instance-item">
       <div class="input-group input-group-sm">
-        <input class="form-control plugin-instance-name" name="plugin_instances" placeholder="프로세스 이름">
+        <input class="form-control plugin-instance-name" name="plugin_instances" placeholder="프로세스 이름" spellcheck="false" autocomplete="off" autocapitalize="off" lang="en">
         <button class="btn btn-outline-secondary plugin-instance-remove" type="button" aria-label="빼기">−</button>
       </div>
     </div>
@@ -70,6 +70,8 @@
   <button class="btn btn-sm btn-outline-secondary" type="button" id="plugin-instance-add">인스턴스 추가</button>
 </div>
 <div class="mb-0">
-  <label class="small mb-1" for="script">만들어질 수집 스크립트</label>
-  <textarea class="form-control font-monospace" id="script" name="script" rows="14" readonly>{{ preview_script or script }}</textarea>
+  <label class="small mb-1" for="script-preview">만들어질 수집 스크립트 (미리보기)</label>
+  <div class="form-text mb-2">이 칸은 미리보기입니다. 이름·모듈·인스턴스를 바꾸면 같이 바뀝니다. 여기서는 타이핑하지 않습니다.</div>
+  <pre class="form-control font-monospace mb-0" id="script-preview" style="min-height: 16rem; max-height: 28rem; overflow: auto; white-space: pre;">{{ preview_script or script }}</pre>
+  <textarea class="d-none" id="script" name="script" hidden>{{ preview_script or script }}</textarea>
 </div>
