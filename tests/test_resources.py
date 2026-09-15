@@ -823,6 +823,9 @@ def test_connect_many_counts(monkeypatch):
         assert "resource_basic" in page.text
         assert "plugin-add" in page.text
         assert "plugin-card" in page.text
+        assert "plugin-card-grid" in page.text
+        assert "plugin-card-desc" in page.text
+        assert "plugin-meta" in page.text
         assert "CPU" in page.text
         assert "cpu_usage" in page.text
         assert "mem_usage" in page.text

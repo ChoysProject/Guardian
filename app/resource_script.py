@@ -730,11 +730,17 @@ def script_summary(config: dict[str, Any] | None) -> dict[str, Any]:
     modules = [str(item) for item in (cfg.get("modules") or []) if item]
     instances = [str(item).strip() for item in (cfg.get("instances") or []) if str(item).strip()]
     chips: list[str] = []
+    module_names: list[str] = []
+    selected = set(modules)
     for group in CATEGORIES:
-        if any(item["id"] in modules for item in group["modules"]):
+        if any(item["id"] in selected for item in group["modules"]):
             chips.append(str(group.get("name") or group.get("id") or ""))
+        for item in group["modules"]:
+            if item["id"] in selected:
+                module_names.append(str(item.get("name") or item["id"]))
     return {
         "chips": [item for item in chips if item],
+        "modules": module_names,
         "instances": instances,
         "module_count": len(modules),
     }

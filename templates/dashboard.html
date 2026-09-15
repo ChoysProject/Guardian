@@ -110,27 +110,21 @@
     <span>로그분석</span>
     <a class="small" href="/reports">보고서 화면</a>
   </div>
-  <div class="card-body p-0">
-    {% if reports %}
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead>
-          <tr><th>제목</th><th>플러그인</th><th>요약</th></tr>
-        </thead>
-        <tbody>
-        {% for item in reports %}
-          <tr>
-            <td><a href="/reports/{{ item.id }}">{{ item.title }}</a></td>
-            <td>{{ item.plugin }}</td>
-            <td class="small text-muted">{{ item.summary }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="p-4 text-muted">아직 로그분석이 없습니다. 수집 뒤에 보고서 화면에서 만드세요.</div>
+  <div class="card-body">
+    {% if counts.log_attention %}
+    <p class="small text-warning mb-3">주의가 필요한 서버 {{ counts.log_attention }}대</p>
     {% endif %}
+    {% with
+      report_groups=log_report_groups,
+      show_actions=false,
+      include_modals=false,
+      card_kind="log",
+      report_generate_action="/reports/generate",
+      server_edit_base="/servers/logs",
+      report_empty_dashboard="아직 로그 수집 대상이 없습니다."
+    %}
+    {% include "_resource_server_cards.html" %}
+    {% endwith %}
   </div>
 </div>
 
