@@ -26,6 +26,8 @@ def test_health_and_dashboard_and_pipeline():
         assert "로그 분석 보고서" in home.text
         assert "로그 분석 보고서 (추후 고도화)" not in home.text
         assert ">로그분석<" in home.text or "<span>로그분석</span>" in home.text
+        assert 'data-kind="log"' in home.text
+        assert "아직 로그분석이 없습니다. 수집 뒤에 보고서 화면에서 만드세요." not in home.text
         assert "리소스 및 성능 플러그인" not in home.text
         assert "리소스 및 성능 쉘 스크립트" in home.text
         assert 'href="/plugins/logs"' in home.text
@@ -34,6 +36,11 @@ def test_health_and_dashboard_and_pipeline():
 
         collected = client.post("/collect", follow_redirects=True)
         assert collected.status_code == 200
+        home_after = client.get("/")
+        assert home_after.status_code == 200
+        assert 'data-kind="log"' in home_after.text
+        assert "ERROR" in home_after.text
+        assert "징후" in home_after.text
 
         findings = client.get("/api/findings")
         assert findings.status_code == 200
@@ -94,6 +101,8 @@ def test_health_and_dashboard_and_pipeline():
                 .first()
             )
         assert stored is not None
+        assert stored.plugin.startswith("server_report:")
+        assert not stored.plugin.startswith("resource_report")
         embedded = client.get(f"/reports/{stored.id}/embed")
         assert embedded.status_code == 200
         assert "demo-local" in embedded.text
@@ -135,6 +144,10 @@ def test_health_and_dashboard_and_pipeline():
         assert "3단계 · 로그 보고서 플러그인" in log_plugins.text
         assert 'id="plugin-search"' in log_plugins.text
         assert "plugin-card" in log_plugins.text
+        assert "plugin-card-grid" in log_plugins.text
+        assert "plugin-card-desc" in log_plugins.text
+        assert "plugin-meta" in log_plugins.text
+        assert "text-truncate report-summary" not in log_plugins.text
         assert "애플리케이션" in log_plugins.text
         assert "웹 서버" in log_plugins.text
         assert 'data-stage-filter="1"' in log_plugins.text

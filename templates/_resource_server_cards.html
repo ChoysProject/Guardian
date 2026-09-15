@@ -1,14 +1,17 @@
 {% set show_actions = show_actions|default(true) %}
+{% set include_modals = include_modals|default(true) %}
 {% set report_generate_action = report_generate_action|default("/reports/resources/generate") %}
 {% set server_edit_base = server_edit_base|default("/servers/resources") %}
 {% set report_empty_text = report_empty_text|default("수집 대상 서버가 없습니다. 먼저 리소스 및 성능 수집 대상 서버에 자료를 넣으세요.") %}
 {% set report_empty_dashboard = report_empty_dashboard|default("아직 리소스 수집 대상이 없습니다.") %}
+{% set card_kind = card_kind|default("resource") %}
 {% if report_groups %}
 <div class="server-report-grid">
   {% for group in report_groups %}
   {% set metrics = group.metrics or {} %}
   <article
     class="server-report-card {{ metrics.level or '' }}"
+    data-kind="{{ card_kind }}"
     data-server="{{ group.name | e }}"
     data-reports="{{ group.reports_json | e }}"
     role="button"
@@ -60,6 +63,7 @@
       {% endif %}
     </div>
     {% if metrics.date %}<div class="small text-muted mt-2">최근 자료 {{ metrics.date }}{% if group.report_items %} · 보고서 {{ group.report_items | length }}건{% endif %}</div>{% endif %}
+    {% if metrics.problem_text %}<div class="small mt-2">{{ metrics.problem_text }}</div>{% endif %}
     {% endif %}
     {% if show_actions %}
     <div class="server-report-card-actions report-actions">
@@ -89,6 +93,7 @@
 {% endif %}
 {% endif %}
 
+{% if include_modals %}
 <div class="modal fade" id="resourceReportModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
@@ -150,3 +155,4 @@
   </div>
 </div>
 <form class="d-none" id="resourceDeleteForm" method="post" action="/reports/delete"></form>
+{% endif %}

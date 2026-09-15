@@ -245,11 +245,21 @@ def _log_card_metrics(server: Server, findings: list[Finding]) -> dict:
         ]
         if stamps:
             stamp = max(stamps).strftime("%Y-%m-%d")
+    ranked = sorted(
+        [item for item in findings if item.severity in {"error", "warn"}],
+        key=lambda item: (0 if item.severity == "error" else 1, -(item.count or 1)),
+    )
+    problems = [str(item.signature or item.plugin or "징후") for item in ranked[:3]]
+    extra = max(0, len(ranked) - 3)
+    problem_text = " · ".join(problems)
+    if extra:
+        problem_text = f"{problem_text} 외 {extra}건" if problem_text else f"징후 {extra}건"
     return {
         "date": stamp,
         "level": level,
         "status": status,
         "verdict": _log_verdict(error_count, warn_count, len(findings)),
+        "problem_text": problem_text,
         "cells": [
             {"label": "ERROR", "value": str(error_count)},
             {"label": "WARN", "value": str(warn_count)},

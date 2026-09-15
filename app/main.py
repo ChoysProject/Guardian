@@ -224,6 +224,12 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     resource_attention = sum(
         1 for row in report_groups if (row.get("metrics") or {}).get("level") in {"warn", "danger"}
     )
+    log_servers = _log_servers(db)
+    log_findings = db.query(Finding).all()
+    log_report_groups = group_log_report_rows(log_reports, log_servers, log_findings)
+    log_attention = sum(
+        1 for row in log_report_groups if (row.get("metrics") or {}).get("level") in {"warn", "danger"}
+    )
     counts = {
         "servers": len(servers),
         "resource_servers": len(resource_servers),
@@ -232,7 +238,8 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "reports": len(log_reports),
         "resource_reports": len(resource_reports),
         "resource_attention": resource_attention,
-        "log_servers": len(_log_servers(db)),
+        "log_attention": log_attention,
+        "log_servers": len(log_servers),
     }
     return templates.TemplateResponse(
         request,
@@ -245,6 +252,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             reports=log_reports[:5],
             counts=counts,
             report_groups=report_groups,
+            log_report_groups=log_report_groups,
         ),
     )
 

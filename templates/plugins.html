@@ -43,19 +43,29 @@
     <div class="server-report-card-head">
       <div class="min-w-0">
         <div class="server-report-name">{{ item.name }}</div>
-        <div class="small text-muted text-truncate report-summary">{{ item.description or "수집 스크립트" }}</div>
+        <div class="plugin-card-desc">{{ item.description or "수집 스크립트" }}</div>
       </div>
     </div>
-    {% if summary.chips or summary.instances %}
-    <div class="plugin-chips">
-      {% for chip in summary.chips %}
-      <span class="plugin-chip">{{ chip }}</span>
-      {% endfor %}
-      {% for inst in summary.instances %}
-      <span class="plugin-chip">{{ inst }}</span>
-      {% endfor %}
+    <div class="plugin-card-body">
+      {% if summary.modules or summary.chips or summary.instances %}
+      <dl class="plugin-meta">
+        {% if summary.modules or summary.chips %}
+        <dt>수집</dt>
+        <dd>{{ (summary.modules or summary.chips) | join(" · ") }}</dd>
+        {% endif %}
+        {% if summary.instances %}
+        <dt>인스턴스</dt>
+        <dd>{{ summary.instances | join(" · ") }}</dd>
+        {% endif %}
+        {% if summary.module_count %}
+        <dt>모듈</dt>
+        <dd>{{ summary.module_count }}개{% if summary.modules and summary.chips %} · {{ summary.chips | join(", ") }}{% endif %}</dd>
+        {% endif %}
+      </dl>
+      {% else %}
+      <p class="plugin-card-empty">아직 모을 항목이 없습니다. 수정에서 수집 모듈을 고르면 여기에 보입니다.</p>
+      {% endif %}
     </div>
-    {% endif %}
     <div class="server-report-card-actions">
       <a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a>
     </div>
@@ -101,7 +111,8 @@
         <div class="server-report-card-head">
           <div class="min-w-0">
             <div class="server-report-name">{{ item.label or item.name }}</div>
-            <div class="small text-muted text-truncate report-summary">{{ item.description }}</div>
+            {% if item.label and item.label != item.name %}<div class="plugin-card-kicker">{{ item.name }}</div>{% endif %}
+            <div class="plugin-card-desc">{{ item.description or "설명이 없습니다." }}</div>
           </div>
           {% if item.enabled %}
           <span class="tag ok">ON</span>
@@ -109,9 +120,26 @@
           <span class="tag">OFF</span>
           {% endif %}
         </div>
-        <div class="plugin-chips">
-          <span class="plugin-chip">{{ item.system_label or label }}</span>
-          {% if item.rules %}<span class="plugin-chip">규칙 {{ item.rules | length }}개</span>{% endif %}
+        <div class="plugin-card-body">
+          <dl class="plugin-meta">
+            <dt>분류</dt>
+            <dd>{{ item.system_label or label }}</dd>
+            {% if item.targets and item.targets != ["*"] %}
+            <dt>대상</dt>
+            <dd>{{ item.targets | join(" · ") }}</dd>
+            {% endif %}
+            <dt>규칙</dt>
+            <dd>
+              {% if item.rules %}
+              {{ item.rules | length }}개
+              ·
+              {% for rule in item.rules[:5] %}{{ rule.signature or rule.pattern }}{% if not loop.last %} · {% endif %}{% endfor %}
+              {% if item.rules | length > 5 %} 외 {{ item.rules | length - 5 }}개{% endif %}
+              {% else %}
+              아직 규칙이 없습니다.
+              {% endif %}
+            </dd>
+          </dl>
         </div>
         <div class="server-report-card-actions">
           <a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">규칙 수정</a>
@@ -143,7 +171,8 @@
         <div class="server-report-card-head">
           <div class="min-w-0">
             <div class="server-report-name">{{ item.label or item.name }}</div>
-            <div class="small text-muted text-truncate report-summary">{{ item.description }}</div>
+            {% if item.label and item.label != item.name %}<div class="plugin-card-kicker">{{ item.name }}</div>{% endif %}
+            <div class="plugin-card-desc">{{ item.description or "설명이 없습니다." }}</div>
           </div>
           {% if item.enabled %}
           <span class="tag ok">ON</span>
@@ -151,9 +180,26 @@
           <span class="tag">OFF</span>
           {% endif %}
         </div>
-        <div class="plugin-chips">
-          <span class="plugin-chip">{{ item.system_label or label }}</span>
-          {% if item.rules %}<span class="plugin-chip">규칙 {{ item.rules | length }}개</span>{% endif %}
+        <div class="plugin-card-body">
+          <dl class="plugin-meta">
+            <dt>분류</dt>
+            <dd>{{ item.system_label or label }}</dd>
+            {% if item.targets and item.targets != ["*"] %}
+            <dt>대상</dt>
+            <dd>{{ item.targets | join(" · ") }}</dd>
+            {% endif %}
+            <dt>규칙</dt>
+            <dd>
+              {% if item.rules %}
+              {{ item.rules | length }}개
+              ·
+              {% for rule in item.rules[:5] %}{{ rule.signature or rule.pattern }}{% if not loop.last %} · {% endif %}{% endfor %}
+              {% if item.rules | length > 5 %} 외 {{ item.rules | length - 5 }}개{% endif %}
+              {% else %}
+              아직 규칙이 없습니다.
+              {% endif %}
+            </dd>
+          </dl>
         </div>
         <div class="server-report-card-actions">
           <a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">규칙 수정</a>
@@ -184,7 +230,7 @@
         <div class="server-report-card-head">
           <div class="min-w-0">
             <div class="server-report-name">{{ item.name }}</div>
-            <div class="small text-muted text-truncate report-summary">{{ item.description }}</div>
+            <div class="plugin-card-desc">{{ item.description or "설명이 없습니다." }}</div>
           </div>
           {% if item.enabled %}
           <span class="tag ok">ON</span>
@@ -192,8 +238,23 @@
           <span class="tag">OFF</span>
           {% endif %}
         </div>
-        <div class="plugin-chips">
-          <span class="plugin-chip">{{ "서버마다 파일" if item.config.get("mode") == "per_server" else "한 파일에 모음" }}</span>
+        <div class="plugin-card-body">
+          <dl class="plugin-meta">
+            <dt>묶음</dt>
+            <dd>{{ "서버마다 파일" if item.config.get("mode") == "per_server" else "한 파일에 모음" }}</dd>
+            {% if item.config.get("title") %}
+            <dt>제목</dt>
+            <dd>{{ item.config.get("title") }}</dd>
+            {% endif %}
+            {% if item.targets and item.targets != ["*"] %}
+            <dt>대상</dt>
+            <dd>{{ item.targets | join(" · ") }}</dd>
+            {% endif %}
+            {% if item.config.get("intro") %}
+            <dt>안내</dt>
+            <dd>{{ item.config.get("intro") }}</dd>
+            {% endif %}
+          </dl>
         </div>
         <div class="server-report-card-actions">
           <a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a>
