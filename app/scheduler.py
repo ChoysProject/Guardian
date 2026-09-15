@@ -38,11 +38,7 @@ def _report_job() -> None:
         db.close()
 
 
-def start_scheduler() -> None:
-    if os.environ.get("GUARDIAN_TESTING") == "1":
-        return
-    if scheduler.running:
-        return
+def _register_jobs() -> None:
     hour, minute = _parse_hhmm(settings.scheduler.daily_report_time)
     scheduler.add_job(
         _collect_job,
@@ -56,9 +52,28 @@ def start_scheduler() -> None:
         id="daily_report",
         replace_existing=True,
     )
+
+
+def start_scheduler() -> None:
+    if os.environ.get("GUARDIAN_TESTING") == "1":
+        return
+    if scheduler.running:
+        return
+    _register_jobs()
     scheduler.start()
     logger.info(
         "스케줄 시작: 수집 %ss, 일일 보고서 %s",
+        settings.collect.interval_seconds,
+        settings.scheduler.daily_report_time,
+    )
+
+
+def reschedule_jobs() -> None:
+    if not scheduler.running:
+        return
+    _register_jobs()
+    logger.info(
+        "스케줄 변경: 수집 %ss, 일일 보고서 %s",
         settings.collect.interval_seconds,
         settings.scheduler.daily_report_time,
     )

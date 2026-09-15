@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.auth import require_auth
-from app.config import ROOT, settings
+from app.config import ROOT, settings, update_runtime_settings
 from app.db import dump_json, get_db, parse_json_list
 from app.models import CollectRun, Finding, Report, Server, init_db
 from app.charts import chart_summary
@@ -46,9 +46,11 @@ from app.plugins.runtime import (
     custom_plugins,
     grouped_catalog_plugins,
     grouped_custom_plugins,
+    plugin_usage_names,
 )
 from app.pipeline.runner import collect_and_analyze
-from app.scheduler import shutdown_scheduler, start_scheduler
+from app.metrics import wall_now
+from app.scheduler import reschedule_jobs, shutdown_scheduler, start_scheduler
 from app.seed import seed_demo
 from app.resource_script import (
     DATA_FOLDER,
@@ -96,7 +98,39 @@ def _fmt_ts(value) -> str:
     return str(value).replace("T", " ")[:19]
 
 
+def _fmt_ago(value) -> str:
+    if not value:
+        return "-"
+    raw = value
+    if hasattr(value, "replace") and getattr(value, "tzinfo", None):
+        raw = value.replace(tzinfo=None)
+    if not hasattr(raw, "timestamp"):
+        return _fmt_ts(value)
+    seconds = int((datetime.utcnow() - raw).total_seconds())
+    if seconds < 0:
+        seconds = 0
+    if seconds < 45:
+        return "방금"
+    if seconds < 3600:
+        return f"{seconds // 60}분 전"
+    if seconds < 86400:
+        return f"{seconds // 3600}시간 전"
+    days = seconds // 86400
+    if days < 7:
+        return f"{days}일 전"
+    return _fmt_ts(value)
+
+
+def _shorten(text: str, limit: int = 42) -> str:
+    value = (text or "").strip()
+    if len(value) <= limit:
+        return value
+    return value[: max(limit - 3, 1)] + "..."
+
+
 templates.env.filters["ts"] = _fmt_ts
+templates.env.filters["ago"] = _fmt_ago
+templates.env.filters["shorten"] = _shorten
 
 
 @asynccontextmanager
@@ -1126,19 +1160,115 @@ def collect_all(db: Session = Depends(get_db)):
 
 
 @app.get("/findings", response_class=HTMLResponse)
-def findings_page(request: Request, db: Session = Depends(get_db)):
-    items = db.query(Finding).order_by(Finding.updated_at.desc()).limit(200).all()
+def findings_page(request: Request, db: Session = Depends(get_db), notice: str = ""):
+    items = db.query(Finding).order_by(Finding.updated_at.desc()).limit(400).all()
+    rank = {"error": 0, "warn": 1, "info": 2, "debug": 3}
+    items.sort(
+        key=lambda item: (
+            rank.get(item.severity, 9),
+            -(item.count or 0),
+            -(item.updated_at.timestamp() if item.updated_at else 0),
+        )
+    )
     servers = {server.id: server.name for server in db.query(Server).all()}
+    today_bucket = wall_now().strftime("%Y-%m-%d")
+    max_count = max((item.count or 0) for item in items) if items else 1
     rows = []
+    counts = {"all": 0, "error": 0, "warn": 0, "today": 0, "open": 0, "read": 0}
+    server_names: list[str] = []
+    seen_servers: set[str] = set()
     for item in items:
+        samples = parse_json_list(item.sample_lines)
+        sample = ""
+        for line in samples:
+            text = str(line).strip()
+            if text:
+                sample = text
+                break
+        created = item.created_at
+        updated = item.updated_at
+        repeat = bool(
+            created and updated and (updated - created).total_seconds() > 90
+        )
+        server_name = servers.get(item.server_id, str(item.server_id))
+        if server_name not in seen_servers:
+            seen_servers.add(server_name)
+            server_names.append(server_name)
+        is_read = bool(item.read_at)
+        if is_read:
+            counts["read"] += 1
+        else:
+            counts["open"] += 1
+            counts["all"] += 1
+            if item.severity in counts:
+                counts[item.severity] += 1
+            if item.bucket == today_bucket:
+                counts["today"] += 1
+        heat = int(round(((item.count or 0) / max_count) * 100)) if max_count else 0
         rows.append(
             {
                 "finding": item,
-                "server_name": servers.get(item.server_id, str(item.server_id)),
-                "samples": parse_json_list(item.sample_lines),
+                "server_name": server_name,
+                "samples": samples,
+                "sample": sample,
+                "sample_short": _shorten(sample, 56),
+                "signature_short": _shorten(item.signature or "", 36),
+                "repeat": repeat,
+                "read": is_read,
+                "heat": max(heat, 8 if item.count else 0),
             }
         )
-    return templates.TemplateResponse(request, "findings.html", _ctx(request, rows=rows))
+    server_names.sort()
+    return templates.TemplateResponse(
+        request,
+        "findings.html",
+        _ctx(
+            request,
+            rows=rows,
+            counts=counts,
+            server_names=server_names,
+            today_bucket=today_bucket,
+            notice=notice,
+        ),
+    )
+
+
+def _redirect_findings(notice: str = "") -> RedirectResponse:
+    suffix = f"?notice={quote(notice)}" if notice else ""
+    return RedirectResponse(f"/findings{suffix}", status_code=303)
+
+
+@app.post("/findings/read-all")
+def findings_read_all(db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    open_items = db.query(Finding).filter(Finding.read_at.is_(None)).all()
+    for item in open_items:
+        item.read_at = now
+    db.commit()
+    n = len(open_items)
+    if n:
+        return _redirect_findings(f"열린 징후 {n}건을 읽음으로 두었습니다.")
+    return _redirect_findings("열린 징후가 없습니다.")
+
+
+@app.post("/findings/{finding_id}/read")
+def finding_mark_read(finding_id: int, db: Session = Depends(get_db)):
+    item = db.get(Finding, finding_id)
+    if not item:
+        raise HTTPException(404)
+    item.read_at = datetime.utcnow()
+    db.commit()
+    return _redirect_findings("징후를 읽음으로 두었습니다.")
+
+
+@app.post("/findings/{finding_id}/unread")
+def finding_mark_unread(finding_id: int, db: Session = Depends(get_db)):
+    item = db.get(Finding, finding_id)
+    if not item:
+        raise HTTPException(404)
+    item.read_at = None
+    db.commit()
+    return _redirect_findings("징후를 다시 열었습니다.")
 
 
 @app.get("/findings/{finding_id}", response_class=HTMLResponse)
@@ -1155,6 +1285,7 @@ def finding_detail(finding_id: int, request: Request, db: Session = Depends(get_
             finding=item,
             server=server,
             samples=parse_json_list(item.sample_lines),
+            is_read=bool(item.read_at),
         ),
     )
 
@@ -1459,6 +1590,10 @@ def plugins_root():
 
 def _plugins_page(request: Request, kind: str, **extra):
     items = load_manifests()
+    db = extra.pop("db", None)
+    used = extra.pop("used_plugins", None)
+    if used is None:
+        used = plugin_usage_names(db.query(Server).all() if db is not None else [])
     payload = {
         "kind": kind,
         "stage1": [item for item in items if item.stage == 1],
@@ -1479,6 +1614,7 @@ def _plugins_page(request: Request, kind: str, **extra):
             item.name: script_summary(item.config) for item in items if item.stage == 4
         },
         "list_stage": "",
+        "used_plugins": used,
     }
     if kind == "resources" and not extra.get("preview_script"):
         script, _ = build_script(payload["selected_modules"], plugin_name=payload.get("form_name") or "resource")
@@ -1488,13 +1624,13 @@ def _plugins_page(request: Request, kind: str, **extra):
 
 
 @app.get("/plugins/resources", response_class=HTMLResponse)
-def plugins_resources_page(request: Request, notice: str = ""):
-    return _plugins_page(request, "resources", notice=notice)
+def plugins_resources_page(request: Request, notice: str = "", db: Session = Depends(get_db)):
+    return _plugins_page(request, "resources", notice=notice, db=db)
 
 
 @app.get("/plugins/logs", response_class=HTMLResponse)
-def plugins_logs_page(request: Request, notice: str = "", stage: str = ""):
-    return _plugins_page(request, "logs", notice=notice, list_stage=stage)
+def plugins_logs_page(request: Request, notice: str = "", stage: str = "", db: Session = Depends(get_db)):
+    return _plugins_page(request, "logs", notice=notice, list_stage=stage, db=db)
 
 
 @app.get("/plugins/resource-plugins", response_class=HTMLResponse)
@@ -1647,6 +1783,7 @@ def plugin_create(
             return _plugins_page(
                 request,
                 "resources",
+                db=db,
                 error=str(exc),
                 form_name=name.strip(),
                 form_description=description,
@@ -1847,9 +1984,8 @@ def plugin_save(
     return RedirectResponse(f"/plugins/logs?notice={notice}&stage={stage}", status_code=303)
 
 
-@app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request):
-    safe = {
+def _settings_view() -> dict:
+    return {
         "config_path": str(settings.config_path),
         "host": settings.app.host,
         "port": settings.app.port,
@@ -1862,11 +1998,50 @@ def settings_page(request: Request):
         "daily_report_time": settings.scheduler.daily_report_time,
         "plugin_dir": str(settings.plugin_path),
     }
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, notice: str = "", error: str = ""):
+    safe = _settings_view()
     return templates.TemplateResponse(
         request,
         "settings.html",
-        _ctx(request, cfg=safe, cfg_json=json.dumps(safe, ensure_ascii=False, indent=2)),
+        _ctx(
+            request,
+            cfg=safe,
+            cfg_json=json.dumps(safe, ensure_ascii=False, indent=2),
+            notice=notice,
+            error=error,
+        ),
     )
+
+
+@app.post("/settings", response_class=HTMLResponse)
+def settings_save(
+    request: Request,
+    collect_interval: str = Form(...),
+    daily_report_time: str = Form(...),
+):
+    try:
+        update_runtime_settings(collect_interval, daily_report_time)
+        reschedule_jobs()
+    except ValueError as exc:
+        safe = _settings_view()
+        safe["collect_interval"] = collect_interval
+        safe["daily_report_time"] = daily_report_time
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            _ctx(
+                request,
+                cfg=safe,
+                cfg_json=json.dumps(_settings_view(), ensure_ascii=False, indent=2),
+                error=str(exc),
+            ),
+            status_code=400,
+        )
+    notice = quote("수집 주기와 일일 보고서 시각을 저장했습니다.")
+    return RedirectResponse(f"/settings?notice={notice}", status_code=303)
 
 
 @app.get("/api/findings")

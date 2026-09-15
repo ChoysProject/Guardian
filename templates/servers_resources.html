@@ -94,8 +94,10 @@
             <input class="form-control" id="note" name="note" placeholder="운영 시 참고할 메모">
           </div>
         </div>
-        <button class="btn btn-primary" type="submit">등록</button>
-        <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#server-add">닫기</button>
+        <div class="d-flex justify-content-end gap-2 server-add-actions">
+          <button class="btn btn-primary" type="submit">등록</button>
+          <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#server-add">닫기</button>
+        </div>
       </form>
     </div>
   </div>
@@ -144,7 +146,7 @@
             </td>
             <td class="text-nowrap text-end">
               <div class="d-flex justify-content-end gap-1">
-                <form method="post" action="/servers/resources/{{ server.id }}/collect">
+                <form class="js-fidget" data-fidget="resource-collect" method="post" action="/servers/resources/{{ server.id }}/collect">
                   <button class="btn btn-sm btn-primary" type="submit">지금 수집</button>
                 </form>
                 <button

@@ -2,36 +2,119 @@
 {% set title = "징후" %}
 {% set heading = "징후" %}
 {% block content %}
-<div class="card mb-4">
-  <div class="card-header">징후</div>
+<div class="card mb-4" data-findings data-default-when="{{ 'today' if counts.today else 'all' }}" data-default-read="open">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <span>징후</span>
+    {% if counts.open %}
+    <form method="post" action="/findings/read-all" class="mb-0">
+      <button class="btn btn-sm btn-outline-secondary" type="submit">열린 것 모두 읽음</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="card-body border-bottom">
+    <p class="small text-muted mb-3">확인한 줄은 읽음으로 두면 기본 목록에서 빠집니다. 다음 날 다시 잡히면 새 줄로 열립니다.</p>
+    <div class="finding-toolbar">
+      <div class="plugin-toolbar-search">
+        <input class="form-control form-control-sm" id="finding-search" type="search" placeholder="시그니처·서버·플러그인·샘플 검색" autocomplete="off">
+      </div>
+      <div class="finding-filters">
+        <div class="btn-group btn-group-sm" role="group" aria-label="읽음">
+          <button class="btn btn-outline-secondary" type="button" data-finding-read="open">열린 <span class="finding-n" data-count="open">{{ counts.open }}</span></button>
+          <button class="btn btn-outline-secondary" type="button" data-finding-read="read">읽은 <span class="finding-n" data-count="read">{{ counts.read }}</span></button>
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="심각도">
+          <button class="btn btn-outline-secondary" type="button" data-finding-severity="all">전체 <span class="finding-n" data-count="all">{{ counts.all }}</span></button>
+          <button class="btn btn-outline-secondary" type="button" data-finding-severity="error">ERROR <span class="finding-n" data-count="error">{{ counts.error }}</span></button>
+          <button class="btn btn-outline-secondary" type="button" data-finding-severity="warn">WARN <span class="finding-n" data-count="warn">{{ counts.warn }}</span></button>
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="기간">
+          <button class="btn btn-outline-secondary" type="button" data-finding-when="today">오늘 <span class="finding-n" data-count="today">{{ counts.today }}</span></button>
+          <button class="btn btn-outline-secondary" type="button" data-finding-when="all">전체 기간</button>
+        </div>
+        <select class="form-select form-select-sm finding-server-filter" id="finding-server" aria-label="서버">
+          <option value="">모든 서버</option>
+          {% for name in server_names %}
+          <option value="{{ name }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
   <div class="card-body p-0">
     {% if rows %}
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0 align-middle finding-table finding-table-full">
         <thead>
-          <tr><th>심각도</th><th>서버</th><th>시그니처</th><th>건수</th><th>플러그인</th><th>AI</th></tr>
+          <tr>
+            <th>심각도</th>
+            <th>서버</th>
+            <th>시그니처</th>
+            <th>샘플</th>
+            <th>건수</th>
+            <th>플러그인</th>
+            <th>최근</th>
+            <th></th>
+          </tr>
         </thead>
         <tbody>
         {% for row in rows %}
-          <tr>
-            <td>
-              {% if row.finding.severity == 'error' %}<span class="badge bg-danger">{{ row.finding.severity }}</span>
-              {% elif row.finding.severity == 'warn' %}<span class="badge bg-warning">{{ row.finding.severity }}</span>
-              {% else %}<span class="badge bg-secondary">{{ row.finding.severity }}</span>{% endif %}
+          {% set finding = row.finding %}
+          <tr
+            class="finding-row{% if row.read %} is-read{% endif %}"
+            data-finding-row
+            data-finding-id="{{ finding.id }}"
+            data-severity="{{ finding.severity }}"
+            data-server="{{ row.server_name }}"
+            data-today="{{ '1' if finding.bucket == today_bucket else '0' }}"
+            data-read="{{ '1' if row.read else '0' }}"
+            data-search="{{ (finding.signature ~ ' ' ~ row.server_name ~ ' ' ~ finding.plugin ~ ' ' ~ row.sample) | e }}"
+          >
+            <td class="text-nowrap">
+              {% if finding.severity == 'error' %}<span class="badge bg-danger">ERROR</span>
+              {% elif finding.severity == 'warn' %}<span class="badge bg-warning text-dark">WARN</span>
+              {% else %}<span class="badge bg-secondary">{{ finding.severity | upper }}</span>{% endif %}
+              {% if row.repeat %}
+              <span class="badge bg-secondary-soft text-secondary">반복</span>
+              {% endif %}
             </td>
-            <td>{{ row.server_name }}</td>
-            <td><a href="/findings/{{ row.finding.id }}"><code>{{ row.finding.signature }}</code></a></td>
-            <td>{{ row.finding.count }}</td>
-            <td>{{ row.finding.plugin }}</td>
-            <td>{% if row.finding.ai_comment %}<span class="badge bg-success-soft text-success">있음</span>{% else %}-{% endif %}</td>
+            <td class="small text-truncate" title="{{ row.server_name }}">{{ row.server_name }}</td>
+            <td class="finding-signature" title="{{ finding.signature }}">
+              <a href="/findings/{{ finding.id }}"><code>{{ row.signature_short }}</code></a>
+            </td>
+            <td class="small finding-sample" title="{{ row.sample }}">{{ row.sample_short or "—" }}</td>
+            <td>
+              <div class="finding-count">
+                <span class="finding-count-num">{{ finding.count }}</span>
+                <span class="finding-count-bar" aria-hidden="true"><i style="--pct: {{ row.heat }}"></i></span>
+              </div>
+            </td>
+            <td class="small text-muted finding-plugin" title="{{ finding.plugin }}">{{ finding.plugin }}</td>
+            <td class="small text-nowrap" title="{{ finding.updated_at | ts }}">{{ finding.updated_at | ago }}</td>
+            <td class="text-end text-nowrap">
+              {% if row.read %}
+              <form method="post" action="/findings/{{ finding.id }}/unread" class="mb-0">
+                <button class="btn btn-sm btn-outline-secondary" type="submit">다시 열기</button>
+              </form>
+              {% else %}
+              <form method="post" action="/findings/{{ finding.id }}/read" class="mb-0">
+                <button class="btn btn-sm btn-outline-secondary" type="submit">읽음</button>
+              </form>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
+          <tr id="finding-empty-filter" class="d-none">
+            <td colspan="8" class="p-4 text-muted">조건에 맞는 징후가 없습니다.</td>
+          </tr>
         </tbody>
       </table>
     </div>
     {% else %}
-    <div class="p-4 text-muted">징후가 없습니다.</div>
+    <div class="p-4 text-muted">아직 징후가 없습니다. 로그 수집 대상 서버에서 수집하면 여기에 모입니다.</div>
     {% endif %}
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/guardian-findings.js?v=findings-read-1"></script>
 {% endblock %}

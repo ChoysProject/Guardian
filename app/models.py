@@ -92,6 +92,7 @@ class Finding(Base):
     plugin: Mapped[str] = mapped_column(String(128), default="stage1.common")
     ai_comment: Mapped[str] = mapped_column(Text, default="")
     bucket: Mapped[str] = mapped_column(String(16), default="")  # YYYY-MM-DD
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -172,3 +173,8 @@ def init_db() -> None:
             for column, ddl in added:
                 if column not in columns:
                     conn.execute(text(f"ALTER TABLE servers ADD COLUMN {column} {ddl}"))
+    if inspector.has_table("findings"):
+        columns = {col["name"] for col in inspector.get_columns("findings")}
+        if "read_at" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE findings ADD COLUMN read_at DATETIME"))

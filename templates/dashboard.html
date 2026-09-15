@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% set title = "현황" %}
+{% set title = "감시 현황" %}
 {% set heading = "감시 현황" %}
 {% set icon = "activity" %}
 {% block header %}
@@ -167,7 +167,10 @@
         </div>
       </div>
       <div class="card-body">
-        <div class="chart-area"><canvas id="chartRealtimeTrend" width="100%" height="30"></canvas></div>
+        <div class="chart-area">
+          <canvas id="chartRealtimeTrend" width="100%" height="30"></canvas>
+          <p class="chart-empty d-none" id="trend-empty"></p>
+        </div>
       </div>
     </div>
   </div>
@@ -230,22 +233,24 @@
   <div class="card-body p-0">
     {% if findings %}
     <div class="table-responsive scroll-panel">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0 align-middle finding-table finding-table-dash">
         <thead>
-          <tr><th>심각도</th><th>호스트</th><th>시그니처</th><th>건수</th><th>플러그인</th></tr>
+          <tr><th>심각도</th><th>서버</th><th>시그니처</th><th>건수</th><th>플러그인</th></tr>
         </thead>
         <tbody>
         {% for item in findings %}
           <tr>
-            <td>
-              {% if item.severity == 'error' %}<span class="badge bg-danger">{{ item.severity }}</span>
-              {% elif item.severity == 'warn' %}<span class="badge bg-warning">{{ item.severity }}</span>
-              {% else %}<span class="badge bg-secondary">{{ item.severity }}</span>{% endif %}
+            <td class="text-nowrap">
+              {% if item.severity == 'error' %}<span class="badge bg-danger">ERROR</span>
+              {% elif item.severity == 'warn' %}<span class="badge bg-warning text-dark">WARN</span>
+              {% else %}<span class="badge bg-secondary">{{ item.severity | upper }}</span>{% endif %}
             </td>
-            <td>{{ item.host }}</td>
-            <td><a href="/findings/{{ item.id }}"><code>{{ item.signature }}</code></a></td>
+            <td class="small text-truncate" title="{{ item.host }}">{{ item.host }}</td>
+            <td class="finding-signature" title="{{ item.signature }}">
+              <a href="/findings/{{ item.id }}"><code>{{ item.signature | shorten(36) }}</code></a>
+            </td>
             <td>{{ item.count }}</td>
-            <td>{{ item.plugin }}</td>
+            <td class="small text-muted finding-plugin" title="{{ item.plugin }}">{{ item.plugin }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -271,6 +276,6 @@
 {% endblock %}
 {% block scripts %}
 <script src="/static/vendor/Chart.min.js"></script>
-<script src="/static/js/guardian-charts.js"></script>
+<script src="/static/js/guardian-charts.js?v=trend-info-1"></script>
 <script src="/static/js/guardian-resource-reports.js?v=report-export-1"></script>
 {% endblock %}

@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <title>{{ app_name }} · {{ title | default("로그 감시") }}</title>
+  <title>{{ app_name }} · {{ title | default("현황") }}</title>
   <link href="/static/vendor/sb-admin-pro/css/styles.css" rel="stylesheet">
-  <link href="/static/css/guardian.css?v=plugin-cards-wide-1" rel="stylesheet">
+  <link href="/static/css/guardian.css?v=brand-report-1" rel="stylesheet">
   <link rel="icon" type="image/png" href="/static/vendor/sb-admin-pro/assets/img/favicon.png">
   <script src="/static/vendor/feather.min.js"></script>
 </head>
@@ -14,7 +14,7 @@
     <button class="btn btn-icon btn-transparent-dark order-1 order-lg-0 me-2 ms-lg-2 me-lg-0" id="sidebarToggle" type="button">
       <i data-feather="menu"></i>
     </button>
-    <a class="navbar-brand pe-3 ps-4 ps-lg-2" href="/">{{ app_name }}</a>
+    <a class="navbar-brand pe-3 ps-4 ps-lg-2 guardian-brand" href="/">{{ app_name }}</a>
     <ul class="navbar-nav align-items-center ms-auto">
       <li class="nav-item me-2">
         <span class="badge {{ 'bg-success-soft text-success' if openai_enabled else 'bg-light text-muted' }}">OpenAI {% if openai_enabled %}ON{% else %}OFF{% endif %}</span>
@@ -29,7 +29,6 @@
       <nav class="sidenav shadow-right sidenav-light">
         <div class="sidenav-menu">
           <div class="nav accordion" id="accordionSidenav">
-            <div class="sidenav-menu-heading">감시</div>
             <a class="nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">
               <div class="nav-link-icon"><i data-feather="activity"></i></div>
               현황
@@ -124,7 +123,7 @@
       <span></span><span></span><span></span>
       <i class="report-fidget-hub"></i>
     </div>
-    <p class="report-fidget-title">보고서를 만들고 있어요</p>
+    <p class="report-fidget-title" id="reportFidgetTitle">보고서를 만들고 있어요</p>
     <p class="report-fidget-line" id="reportFidgetLine"></p>
   </div>
   <div class="modal fade" id="guardianConfirmModal" tabindex="-1" aria-hidden="true">
@@ -148,7 +147,7 @@
   <script src="/static/vendor/sb-admin-pro/js/scripts.js"></script>
   <script src="/static/js/guardian-scroll.js"></script>
   <script src="/static/js/guardian-ui.js?v=ui-toast-copy-1"></script>
-  <script src="/static/js/guardian-report-fidget.js?v=report-fidget-1"></script>
+  <script src="/static/js/guardian-report-fidget.js?v=collect-fidget-1"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

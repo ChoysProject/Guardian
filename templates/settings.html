@@ -1,12 +1,39 @@
 {% extends "base.html" %}
-{% set title = "설정" %}
-{% set heading = "설정" %}
+{% set title = "시스템 설정" %}
+{% set heading = "시스템 설정" %}
 {% block content %}
 <p class="text-muted mb-4">
-  Guardian이 지금 읽고 있는 값입니다. 화면에서 고치는 항목이 아니라,
-  <code>config.yaml</code> 을 저장한 뒤 프로세스를 다시 켜야 반영됩니다.
+  수집 주기와 일일 보고서 시각은 여기서 바로 바꿀 수 있습니다.
+  나머지 항목은 <code>config.yaml</code> 을 저장한 뒤 프로세스를 다시 켜야 반영됩니다.
   다른 경로의 파일을 쓰려면 환경변수 <code>GUARDIAN_CONFIG</code> 로 지정합니다.
 </p>
+<div class="card mb-4">
+  <div class="card-header">수집·보고서</div>
+  <div class="card-body">
+    <form method="post" action="/settings">
+      <div class="row mb-3">
+        <div class="col-md-3 text-muted small pt-2">수집 주기</div>
+        <div class="col-md-9">
+          <div class="input-group" style="max-width: 16rem;">
+            <input class="form-control" id="collect_interval" name="collect_interval" type="number" min="15" max="86400" step="1" required value="{{ cfg.collect_interval }}">
+            <span class="input-group-text">초</span>
+          </div>
+          <div class="form-text">로그 수집 대상을 다시 읽어 오는 간격입니다. 15초 이상입니다.</div>
+        </div>
+      </div>
+      <div class="row mb-3">
+        <div class="col-md-3 text-muted small pt-2">일일 보고서</div>
+        <div class="col-md-9">
+          <input class="form-control" id="daily_report_time" name="daily_report_time" type="text" inputmode="numeric" pattern="[0-2][0-9]:[0-5][0-9]" placeholder="18:00" required value="{{ cfg.daily_report_time }}" style="max-width: 16rem;" autocomplete="off">
+          <div class="form-text">매일 이 시각에 켜 둔 서버의 보고서를 만듭니다.</div>
+        </div>
+      </div>
+      <div class="d-flex justify-content-end">
+        <button class="btn btn-primary" type="submit">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
 <div class="card mb-4">
   <div class="card-header">현재 설정</div>
   <div class="card-body">
@@ -42,21 +69,7 @@
       <div class="col-md-3 text-muted small">AI</div>
       <div class="col-md-9">
         {% if cfg.openai_enabled %}OpenAI {{ cfg.openai_model }}{% elif cfg.dify_enabled %}Dify{% else %}비활성 (규칙 결과만 표시){% endif %}
-        <div class="form-text">보고서 총평과 징후 주석에 씁니다. 꺼져 있어도 규칙 분석과 보고서는 그대로 나옵니다. OpenAI와 Dify 중 쓰는 쪽만 켜면 됩니다.</div>
-      </div>
-    </div>
-    <div class="row mb-3">
-      <div class="col-md-3 text-muted small">수집 주기</div>
-      <div class="col-md-9">
-        {{ cfg.collect_interval }}초
-        <div class="form-text">로그 수집 대상을 다시 읽어 오는 간격입니다.</div>
-      </div>
-    </div>
-    <div class="row mb-3">
-      <div class="col-md-3 text-muted small">일일 보고서</div>
-      <div class="col-md-9">
-        {{ cfg.daily_report_time }}
-        <div class="form-text">매일 이 시각에 켜 둔 서버의 보고서를 만듭니다.</div>
+        <div class="form-text">보고서 생성 때 총평에만 씁니다. 로그·리소스 수집 주기마다 호출하지 않습니다. 꺼져 있어도 규칙 분석과 보고서는 그대로 나옵니다. OpenAI와 Dify 중 쓰는 쪽만 켜면 됩니다.</div>
       </div>
     </div>
     <div class="row">
@@ -69,7 +82,7 @@
   </div>
 </div>
 <div class="card mb-4">
-  <div class="card-header">읽은 값</div>
+  <div class="card-header">시스템 설정</div>
   <div class="card-body">
     <p class="small text-muted mb-3">화면에 올린 항목만 보여 줍니다. 비밀번호와 API 키는 여기에 나오지 않습니다.</p>
     <pre class="guardian-log">{{ cfg_json }}</pre>

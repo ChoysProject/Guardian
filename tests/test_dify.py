@@ -1,5 +1,5 @@
 from app.ai.dify import _extract_comments, findings_payload
-from app.ai.gateway import annotate_findings, review_resources
+from app.ai.gateway import annotate_findings, review_logs, review_resources
 from app.config import settings
 
 
@@ -39,6 +39,19 @@ def test_annotate_failure_returns_empty(monkeypatch):
     monkeypatch.setattr("app.ai.gateway._call_openai", boom)
     comments = annotate_findings([{"signature": "a"}])
     assert comments == [""]
+
+
+def test_collect_does_not_call_ai(monkeypatch):
+    def boom(_findings):
+        raise AssertionError("수집 경로에서 AI를 부르면 안 됩니다")
+
+    monkeypatch.setattr("app.ai.gateway.annotate_findings", boom)
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app) as client:
+        collected = client.post("/collect", follow_redirects=True)
+        assert collected.status_code == 200
 
 
 def test_extract_dify_default_output_key():
@@ -90,3 +103,29 @@ def test_review_resources_uses_dify_text(monkeypatch):
     monkeypatch.setattr("app.ai.gateway._call_dify", fake_dify)
     review = review_resources({"server": "eai", "cpu": {"last": 10}})
     assert review["summary"] == "디스크가 빠르게 찹니다."
+
+
+def test_review_logs_disabled_keeps_rule_results():
+    assert review_logs({"server": "EAI_LOG", "stats": {"lines": 3}, "findings": []}) == {}
+
+
+def test_review_logs_uses_dify_facts(monkeypatch):
+    monkeypatch.setattr("app.ai.gateway.settings.openai.enabled", False)
+    monkeypatch.setattr("app.ai.gateway.settings.dify.enabled", True)
+    seen = {}
+
+    def fake_dify(payload):
+        seen["payload"] = payload
+        return ['{"summary": "ERROR 2건입니다.", "risks": [], "actions": []}']
+
+    monkeypatch.setattr("app.ai.gateway._call_dify", fake_dify)
+    review = review_logs(
+        {
+            "server": "EAI_LOG",
+            "stats": {"lines": 40, "error": 2, "warn": 0},
+            "findings": [{"signature": "spring.boot_failed", "count": 2, "severity": "error"}],
+        }
+    )
+    assert seen["payload"]["task"] == "log_review"
+    assert seen["payload"]["facts"]["lines"] == 40
+    assert review["summary"] == "ERROR 2건입니다."

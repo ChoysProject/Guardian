@@ -24,6 +24,19 @@
           <div class="col-sm-8 mb-2">{{ finding.plugin }}</div>
           <div class="col-sm-4 text-muted small mb-2">시각</div>
           <div class="col-sm-8 mb-2">{{ finding.occurred_at | ts }}</div>
+          <div class="col-sm-4 text-muted small mb-2">상태</div>
+          <div class="col-sm-8 mb-2">
+            {% if is_read %}
+            <span class="badge bg-secondary-soft text-secondary">읽음</span>
+            <form method="post" action="/findings/{{ finding.id }}/unread" class="d-inline ms-1">
+              <button class="btn btn-sm btn-outline-secondary" type="submit">다시 열기</button>
+            </form>
+            {% else %}
+            <form method="post" action="/findings/{{ finding.id }}/read" class="d-inline">
+              <button class="btn btn-sm btn-outline-secondary" type="submit">읽음으로 두기</button>
+            </form>
+            {% endif %}
+          </div>
         </div>
       </div>
     </div>
@@ -35,7 +48,8 @@
         {% if finding.ai_comment %}
           <p class="mb-0">{{ finding.ai_comment }}</p>
         {% else %}
-          <div class="alert alert-warning mb-0" role="alert">AI가 꺼져 있거나 호출에 실패했습니다. 규칙/플러그인 결과는 그대로 유효합니다.</div>
+          <p class="text-muted mb-2">이 징후 칸은 수집 때마다 AI를 부르지 않습니다. 토큰을 아끼려고, 로그 분석 보고서를 만들 때만 총평을 붙입니다.</p>
+          <a class="small" href="/reports">로그 분석 보고서</a>
         {% endif %}
       </div>
     </div>

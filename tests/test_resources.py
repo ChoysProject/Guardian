@@ -350,6 +350,7 @@ def test_resource_server_register_edit_delete():
         assert "커넥션 상태" in created.text
         assert "connection-status is-off" in created.text
         assert ">disconnection<" in created.text
+        assert 'data-fidget="resource-collect"' in created.text
         # 비밀번호는 화면에 다시 나오지 않는다
         assert "s3cret" not in created.text
 
@@ -362,10 +363,16 @@ def test_resource_server_register_edit_delete():
             assert decrypt(server.password_enc) == "s3cret"
             assert plugin_for_server(server).name == "resource_basic"
 
+        plugins = client.get("/plugins/resources")
+        assert plugins.status_code == 200
+        assert 'class="tag ok">ON' in plugins.text
+        assert "서버에서 쓰는 스크립트만 ON" in plugins.text
+
         page = client.get(f"/servers/resources/{server_id}/edit")
         assert page.status_code == 200
         assert "접속 확인" in page.text
         assert "야간 재기동 금지" in page.text
+        assert 'data-fidget="resource-collect"' in page.text
 
         # "하는 일" 체크박스는 없앴다 — 리소스 대상 서버는 늘 리소스만 본다.
         assert "하는 일" not in page.text
@@ -426,6 +433,18 @@ def test_resource_server_register_edit_delete():
         assert removed.status_code == 200
         with SessionLocal() as db:
             assert db.query(Server).filter(Server.name == "ssh-01").one_or_none() is None
+
+
+def test_keys_dir_allows_creating_key_file(tmp_path, monkeypatch):
+    from app.config import settings
+    from app.secrets_store import generate_ssh_key, keys_dir
+
+    monkeypatch.setattr(settings.app, "data_dir", str(tmp_path))
+    folder = keys_dir()
+    assert folder.is_dir()
+    path = Path(generate_ssh_key())
+    assert path.exists()
+    assert path.parent == folder
 
 
 def test_generate_ssh_key_makes_openssh_pair(tmp_path, monkeypatch):
@@ -825,6 +844,8 @@ def test_connect_many_counts(monkeypatch):
         assert "plugin-card" in page.text
         assert "plugin-card-grid" in page.text
         assert "plugin-card-desc" in page.text
+        assert 'id="plugin-search"' in page.text
+        assert "plugin-chips" in page.text
         assert "plugin-meta" in page.text
         assert "CPU" in page.text
         assert "cpu_usage" in page.text
@@ -1130,6 +1151,7 @@ def test_resource_server_list_has_no_instances():
         assert "커넥션 상태" in page.text
         assert "/servers/resources/connect-all" in page.text
         assert "eai-01" not in page.text
+        assert "server-add-actions" in page.text
 
 
 def test_script_writes_json_under_plugin_folder():

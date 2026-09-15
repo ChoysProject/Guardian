@@ -10,7 +10,7 @@ def render_standard_report(ctx, extra_sections: list[tuple[str, str]] | None = N
     cfg = ctx.config or {}
     stats = cfg.get("stats") if isinstance(cfg.get("stats"), dict) else {}
     server_name = cfg.get("server_name") or ctx.server_name
-    title = cfg.get("title") or "Goodmorning Check 로그 분석 보고서"
+    title = cfg.get("title") or "Guardian 로그 분석 보고서"
     if server_name and server_name not in ("*", "", "-") and "{server}" in title:
         title = title.replace("{server}", str(server_name))
     elif (
@@ -58,6 +58,9 @@ def render_standard_report(ctx, extra_sections: list[tuple[str, str]] | None = N
         md_lines.append(f"- 이전 날짜 징후: {int(stats.get('older_findings'))}건")
     if intro:
         md_lines += ["", intro]
+    ai_md, ai_html = _ai_review_blocks(cfg.get("ai") if isinstance(cfg.get("ai"), dict) else {})
+    if ai_md:
+        md_lines += ["", "## AI 총평", ""] + ai_md
     md_lines += ["", "## 1. 심각도 집계", ""]
     if by_severity:
         for severity, count in sorted(by_severity.items()):
@@ -99,13 +102,47 @@ def render_standard_report(ctx, extra_sections: list[tuple[str, str]] | None = N
         md_lines.append("")
 
     markdown = "\n".join(md_lines)
-    html = _to_html(title, start, end, summary, by_severity, by_server, ranked, intro, stats)
+    html = _to_html(title, start, end, summary, by_severity, by_server, ranked, intro, stats, ai_html)
     return {
         "title": f"{start} {title}".strip(),
         "summary": summary,
         "markdown": markdown,
         "html": html,
     }
+
+
+def _ai_review_blocks(review: dict) -> tuple[list[str], str]:
+    summary = str((review or {}).get("summary") or "").strip()
+    risks = [str(item).strip() for item in ((review or {}).get("risks") or []) if str(item).strip()]
+    actions = [str(item).strip() for item in ((review or {}).get("actions") or []) if str(item).strip()]
+    if not summary and not risks and not actions:
+        return [], ""
+    md: list[str] = []
+    if summary:
+        md += [summary, ""]
+    if risks:
+        md.append("**눈여겨볼 것**")
+        md += [f"- {item}" for item in risks]
+        md.append("")
+    if actions:
+        md.append("**해볼 조치**")
+        md += [f"- {item}" for item in actions]
+        md.append("")
+    blocks = [f"<p>{escape(summary)}</p>"] if summary else []
+    if risks:
+        blocks.append(
+            "<p>눈여겨볼 것</p><ul>"
+            + "".join(f"<li>{escape(item)}</li>" for item in risks)
+            + "</ul>"
+        )
+    if actions:
+        blocks.append(
+            "<p>해볼 조치</p><ul>"
+            + "".join(f"<li>{escape(item)}</li>" for item in actions)
+            + "</ul>"
+        )
+    html = "<h2>AI 총평</h2><div class='ai-review'>" + "".join(blocks) + "</div>"
+    return md, html
 
 
 def _severity_level(value: str) -> str:
@@ -117,7 +154,14 @@ def _severity_level(value: str) -> str:
     return "ok"
 
 
-def _to_html(title, start, end, summary, by_severity, by_server, ranked, intro="", stats=None) -> str:
+def _clip(text: str, limit: int = 36) -> str:
+    value = str(text or "").strip()
+    if len(value) <= limit:
+        return value
+    return value[: max(limit - 3, 1)] + "..."
+
+
+def _to_html(title, start, end, summary, by_severity, by_server, ranked, intro="", stats=None, ai_html="") -> str:
     stats = stats if isinstance(stats, dict) else {}
     error_count = int(by_severity.get("error") or 0)
     warn_count = int(by_severity.get("warn") or 0)
@@ -148,22 +192,21 @@ def _to_html(title, start, end, summary, by_severity, by_server, ranked, intro="
     rows = []
     for item in ranked[:50]:
         severity = str(item.get("severity") or "")
-        samples = "<br>".join(escape(str(line)) for line in (item.get("sample_lines") or [])[:3])
-        comment = escape(item.get("ai_comment") or "") or "-"
+        signature = str(item.get("signature") or "")
+        samples = "<br>".join(escape(str(line)) for line in (item.get("sample_lines") or [])[:2])
         rows.append(
             "<tr>"
-            f'<td><span class="tag {_severity_level(severity)}">{escape(severity)}</span></td>'
-            f"<td>{escape(str(item.get('server') or item.get('host') or '-'))}</td>"
-            f"<td><code>{escape(str(item.get('signature') or ''))}</code></td>"
-            f"<td>{escape(str(item.get('count') or 0))}</td>"
-            f"<td>{escape(str(item.get('plugin') or '-'))}</td>"
-            f"<td>{comment}</td>"
-            f"<td><pre>{samples or '-'}</pre></td>"
+            f'<td class="sev"><span class="tag {_severity_level(severity)}">{escape(severity.upper() if severity else "-")}</span></td>'
+            f'<td class="host" title="{escape(str(item.get("server") or item.get("host") or "-"))}">{escape(str(item.get("server") or item.get("host") or "-"))}</td>'
+            f'<td class="sig" title="{escape(signature)}"><code>{escape(_clip(signature, 36))}</code></td>'
+            f'<td class="num">{escape(str(item.get("count") or 0))}</td>'
+            f'<td class="plugin" title="{escape(str(item.get("plugin") or "-"))}">{escape(str(item.get("plugin") or "-"))}</td>'
+            f'<td class="sample">{samples or "-"}</td>'
             "</tr>"
         )
     intro_html = f'<p class="intro">{escape(intro)}</p>' if intro else ""
     body = "\n".join(rows) or (
-        "<tr><td colspan='7' class='empty'>"
+        "<tr><td colspan='6' class='empty'>"
         + escape(
             f"오늘 로그 {lines:,}줄을 봤고 징후는 없습니다."
             if lines
@@ -201,34 +244,49 @@ def _to_html(title, start, end, summary, by_severity, by_server, ranked, intro="
       --danger-bg: #fef3f2;
     }}
     body {{ font-family: "Segoe UI", "Apple SD Gothic Neo", sans-serif; background: var(--bg); color: var(--text); margin: 0; }}
-    .wrap {{ max-width: 960px; margin: 0 auto; padding: 32px 24px 48px; }}
-    h1 {{ font-size: 1.45rem; margin: 0 0 6px; }}
-    h2 {{ font-size: 0.95rem; margin: 28px 0 10px; color: #344054; }}
+    .wrap {{ width: 100%; max-width: 100%; margin: 0 auto; padding: 28px 28px 40px; box-sizing: border-box; }}
+    h1 {{ font-size: 1.35rem; margin: 0 0 6px; letter-spacing: -0.02em; }}
+    h2 {{ font-size: 0.9rem; margin: 22px 0 10px; color: #344054; }}
     .meta {{ color: var(--muted); font-size: 13px; margin-bottom: 16px; }}
     .intro {{ color: var(--text); line-height: 1.55; }}
     .verdict {{ display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); margin-bottom: 16px; font-weight: 650; }}
     .verdict.ok {{ background: var(--ok-bg); border-color: #abefc6; color: var(--ok); }}
     .verdict.warn {{ background: var(--warn-bg); border-color: #fedf89; color: var(--warn); }}
     .verdict.danger {{ background: var(--danger-bg); border-color: #fecdca; color: var(--danger); }}
-    .kpis {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 8px; }}
-    .kpi {{ background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }}
+    .kpis {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 8px; }}
+    .kpi {{ background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; min-width: 0; }}
     .kpi.ok {{ border-color: #abefc6; }}
     .kpi.warn {{ border-color: #fedf89; background: var(--warn-bg); }}
     .kpi.danger {{ border-color: #fecdca; background: var(--danger-bg); }}
     .kpi .label {{ color: var(--muted); font-size: 12px; margin-bottom: 4px; }}
     .kpi .value {{ font-size: 1.7rem; font-weight: 700; letter-spacing: -0.03em; }}
     .kpi .note {{ color: var(--muted); font-size: 12px; margin-top: 4px; }}
-    table {{ width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }}
-    th, td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: top; }}
-    th {{ color: var(--muted); font-weight: 600; background: #fafbff; }}
-    tr:last-child td {{ border-bottom: 0; }}
+    table.findings {{ width: 100%; table-layout: fixed; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }}
+    .findings th, .findings td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: middle; }}
+    .findings th {{ color: var(--muted); font-weight: 600; background: #fafbff; }}
+    .findings tr:last-child td {{ border-bottom: 0; }}
+    .findings .sev {{ width: 7%; }}
+    .findings .host {{ width: 12%; }}
+    .findings .sig {{ width: 18%; }}
+    .findings .num {{ width: 8%; }}
+    .findings .plugin {{ width: 16%; }}
+    .findings .sample {{ width: auto; color: #667085; }}
+    .findings .host, .findings .sig, .findings .plugin, .findings .sample {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .findings .sig code {{ display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: Consolas, "Apple SD Gothic Neo", monospace; background: #f2f4f7; padding: 2px 6px; border-radius: 6px; }}
     code, pre {{ font-family: Consolas, "Apple SD Gothic Neo", monospace; background: #f2f4f7; padding: 2px 6px; border-radius: 6px; white-space: pre-wrap; }}
-    pre {{ margin: 0; padding: 8px; }}
     .tag {{ display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 650; }}
     .tag.ok {{ background: var(--ok-bg); color: var(--ok); }}
     .tag.warn {{ background: var(--warn-bg); color: var(--warn); }}
     .tag.danger {{ background: var(--danger-bg); color: var(--danger); }}
     .empty {{ color: var(--muted); }}
+    .ai-review {{ background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-bottom: 16px; }}
+    .ai-review p {{ margin: 0 0 10px; line-height: 1.55; }}
+    .ai-review p:last-child {{ margin-bottom: 0; }}
+    .ai-review ul {{ margin: 0 0 10px; padding-left: 1.2rem; }}
+    .ai-review li {{ margin: 0.2rem 0; line-height: 1.5; }}
+    @media (max-width: 860px) {{
+      .kpis {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    }}
   </style>
 </head>
 <body>
@@ -238,6 +296,7 @@ def _to_html(title, start, end, summary, by_severity, by_server, ranked, intro="
     {collect_html}
     {intro_html}
     <div class="verdict {overall}">{escape(verdict)}</div>
+    {ai_html}
     <div class="kpis">
       <div class="kpi"><div class="label">처리 로그</div><div class="value">{lines:,}</div><div class="note">오늘 읽은 줄</div></div>
       <div class="kpi {'danger' if error_lines else 'ok'}"><div class="label">ERROR 줄</div><div class="value">{error_lines:,}</div></div>
@@ -245,8 +304,8 @@ def _to_html(title, start, end, summary, by_severity, by_server, ranked, intro="
       <div class="kpi {'danger' if error_count else ('warn' if warn_count else 'ok')}"><div class="label">징후</div><div class="value">{finding_count}</div><div class="note">규칙에 걸린 건</div></div>
     </div>
     <h2>징후 목록</h2>
-    <table>
-      <thead><tr><th>심각도</th><th>서버</th><th>시그니처</th><th>건수</th><th>플러그인</th><th>AI</th><th>샘플</th></tr></thead>
+    <table class="findings">
+      <thead><tr><th class="sev">심각도</th><th class="host">서버</th><th class="sig">시그니처</th><th class="num">건수</th><th class="plugin">플러그인</th><th class="sample">샘플</th></tr></thead>
       <tbody>{body}</tbody>
     </table>
   </div>

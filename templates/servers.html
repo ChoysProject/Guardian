@@ -75,7 +75,7 @@
           <div class="col-12 mb-3" id="log-path-row">
             <label class="small mb-1" for="log_paths">로그 경로 (줄바꿈 또는 쉼표)</label>
             <textarea class="form-control" id="log_paths" name="log_paths" rows="3" placeholder="읽을 로그 파일 경로. 줄마다 하나. 일자·시간 패턴과 * 사용 가능"></textarea>
-            <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. 리눅스 시험은 수정 화면에서 "시험 로그 넣기"로 <code>$HOME/GuardianTestLogs/</code> 에 임시 파일을 만듭니다.</div>
+            <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. <code>~</code> 또는 <code>$HOME</code> 은 접속 계정 홈입니다. 리눅스 시험은 수정 화면에서 "시험 로그 넣기"로 <code>$HOME/GuardianTestLogs/</code> 에 임시 파일을 만듭니다.</div>
           </div>
           {% set pick_id = "add-s1" %}
           {% set pick_title = "1단계 공통 플러그인" %}
@@ -98,8 +98,10 @@
             <input class="form-control" id="note" name="note" placeholder="운영 시 참고할 메모">
           </div>
         </div>
-        <button class="btn btn-primary" type="submit">등록</button>
-        <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#server-add">닫기</button>
+        <div class="d-flex justify-content-end gap-2 server-add-actions">
+          <button class="btn btn-primary" type="submit">등록</button>
+          <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#server-add">닫기</button>
+        </div>
       </form>
     </div>
   </div>
@@ -155,7 +157,7 @@
             <td class="small">{{ server.last_collect_at | ts }}</td>
             <td class="text-nowrap text-end">
               <div class="d-flex justify-content-end gap-1">
-                <form method="post" action="/servers/{{ server.id }}/collect">
+                <form class="js-fidget" data-fidget="log-collect" method="post" action="/servers/{{ server.id }}/collect">
                   <button class="btn btn-sm btn-primary" type="submit">수집</button>
                 </form>
                 <form method="post" action="/servers/{{ server.id }}/toggle">

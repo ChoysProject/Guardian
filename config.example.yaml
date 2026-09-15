@@ -2,7 +2,7 @@
 # 사내 서버로 옮길 때는 host / auth / database.url 만 바꾸면 됩니다.
 
 app:
-  name: Goodmorning Check
+  name: Guardian
   host: 127.0.0.1          # 사내 공용이면 0.0.0.0
   port: 8080
   data_dir: data

@@ -12,7 +12,7 @@
       <form method="post" action="/servers/logs/{{ server.id }}/seed-logs" class="mb-0">
         <button class="btn btn-sm btn-outline-primary" type="submit">시험 로그 넣기</button>
       </form>
-      <form method="post" action="/servers/{{ server.id }}/collect" class="mb-0">
+      <form class="js-fidget mb-0" data-fidget="log-collect" method="post" action="/servers/{{ server.id }}/collect">
         <button class="btn btn-sm btn-primary" type="submit">지금 수집</button>
       </form>
     </div>
@@ -85,7 +85,7 @@
         <div class="col-12 mb-3">
           <label class="small mb-1" for="log_paths">로그 경로 (줄바꿈 또는 쉼표)</label>
           <textarea class="form-control" id="log_paths" name="log_paths" rows="4" placeholder="읽을 로그 파일 경로. 줄마다 하나. 일자·시간 패턴과 * 사용 가능">{{ log_paths_text }}</textarea>
-          <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. 리눅스에서 시험할 때는 비워 두고 수정 화면의 "시험 로그 넣기"를 누르면 <code>$HOME/GuardianTestLogs/guardian-test.log</code> 에 임시 로그를 씁니다.</div>
+          <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. <code>~</code> 또는 <code>$HOME</code> 은 접속 계정 홈입니다. SSH는 SFTP로 읽기 때문에 <code>~/logs/app*</code> 처럼 쓰면 홈을 절대 경로로 펼칩니다. 리눅스에서 시험할 때는 비워 두고 수정 화면의 "시험 로그 넣기"를 누르면 <code>$HOME/GuardianTestLogs/guardian-test.log</code> 에 임시 로그를 씁니다.</div>
         </div>
         {% set pick_id = "edit-s1" %}
         {% set pick_title = "1단계 공통 플러그인" %}
@@ -202,19 +202,21 @@
   <div class="card-body p-0">
     {% if findings %}
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0 align-middle finding-table finding-table-mini">
         <thead><tr><th>심각도</th><th>시그니처</th><th>건수</th><th>플러그인</th></tr></thead>
         <tbody>
         {% for item in findings %}
           <tr>
-            <td>
-              {% if item.severity == 'error' %}<span class="badge bg-danger">{{ item.severity }}</span>
-              {% elif item.severity == 'warn' %}<span class="badge bg-warning">{{ item.severity }}</span>
-              {% else %}<span class="badge bg-secondary">{{ item.severity }}</span>{% endif %}
+            <td class="text-nowrap">
+              {% if item.severity == 'error' %}<span class="badge bg-danger">ERROR</span>
+              {% elif item.severity == 'warn' %}<span class="badge bg-warning text-dark">WARN</span>
+              {% else %}<span class="badge bg-secondary">{{ item.severity | upper }}</span>{% endif %}
             </td>
-            <td><a href="/findings/{{ item.id }}"><code>{{ item.signature }}</code></a></td>
+            <td class="finding-signature" title="{{ item.signature }}">
+              <a href="/findings/{{ item.id }}"><code>{{ item.signature | shorten(36) }}</code></a>
+            </td>
             <td>{{ item.count }}</td>
-            <td class="small">{{ item.plugin }}</td>
+            <td class="small text-muted finding-plugin" title="{{ item.plugin }}">{{ item.plugin }}</td>
           </tr>
         {% endfor %}
         </tbody>

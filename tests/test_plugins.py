@@ -1,7 +1,6 @@
-from app.config import ROOT
 from app.pipeline.normalize import parse_text
 from app.plugins.loader import load_manifests, targets_match
-from app.plugins.runtime import assigned_plugins, catalog_plugins, custom_plugins, run_stage1
+from app.plugins.runtime import assigned_plugins, catalog_plugins, custom_plugins, plugin_usage_names, run_stage1
 from app.plugins.types import PluginManifest
 
 
@@ -30,8 +29,11 @@ def test_loads_bundled_plugins():
     assert stages["common"] == 1
 
 
-def test_auth_and_disk_plugins_on_demo_log():
-    text = (ROOT / "sample_logs" / "demo.log").read_text(encoding="utf-8")
+def test_auth_and_disk_plugins_on_demo_log(tmp_path):
+    from app.demo_logs import write_demo_logs
+
+    write_demo_logs(tmp_path)
+    text = (tmp_path / "demo.log").read_text(encoding="utf-8")
     events = parse_text(text, default_host="demo-local")
     findings = run_stage1("demo-local", "demo-local", events)
     plugins = {item["plugin"] for item in findings}
@@ -123,3 +125,37 @@ def test_assigned_plugins_skip_global_and_match_server():
     assert "eai" not in eai
     assert "mci" not in eai
     assert "eai_report" in eai
+
+
+def test_plugin_usage_names_only_assigned():
+    from app.models import Server
+
+    log_only = Server(
+        name="demo-local",
+        collect_logs=True,
+        collect_resources=False,
+        log_plugins='["java"]',
+        custom_plugins="[]",
+        plugins="[]",
+    )
+    used = plugin_usage_names([log_only])
+    assert "java" in used
+    assert "nginx" not in used
+    assert "daily_report" in used
+    assert "server_report" in used
+    assert "eai_report" not in used
+    assert "resource_basic" not in used
+
+    eai = Server(
+        name="eai-01",
+        collect_logs=True,
+        collect_resources=False,
+        log_plugins="[]",
+        custom_plugins="[]",
+        plugins="[]",
+    )
+    assert "eai_report" in plugin_usage_names([eai])
+
+    res = Server(name="ssh-01", collect_logs=False, collect_resources=True, plugins="[]")
+    assert plugin_usage_names([res]) == {"resource_basic"}
+

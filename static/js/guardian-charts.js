@@ -5,8 +5,8 @@
   Chart.defaults.global.defaultFontFamily = "Metropolis";
   Chart.defaults.global.defaultFontColor = "#69707a";
 
-  var STORAGE_KEY = "guardian.trend.prefs";
-  var DEFAULT_PREFS = { error: true, warn: true, info: false, debug: false, granularity: "hour" };
+  var STORAGE_KEY = "guardian.trend.prefs.v2";
+  var DEFAULT_PREFS = { error: true, warn: true, info: true, debug: false, granularity: "hour" };
   var LEVELS = {
     error: { label: "ERROR", color: "#e81500", fill: "rgba(232, 21, 0, 0.08)" },
     warn: { label: "WARN", color: "#f4a100", fill: "rgba(244, 161, 0, 0.08)" },
@@ -169,7 +169,50 @@
     chart.update();
   }
 
+  function sumSeries(values) {
+    return (values || []).reduce(function (total, item) {
+      return total + (Number(item) || 0);
+    }, 0);
+  }
+
+  function setEmptyHint(data) {
+    var empty = document.getElementById("trend-empty");
+    if (!empty) {
+      return;
+    }
+    var visible = 0;
+    Object.keys(LEVELS).forEach(function (key) {
+      if (applied[key]) {
+        visible += sumSeries(data.timeline[key]);
+      }
+    });
+    if (visible > 0) {
+      empty.classList.add("d-none");
+      empty.textContent = "";
+      return;
+    }
+    var info = sumSeries(data.timeline.info);
+    var debug = sumSeries(data.timeline.debug);
+    var error = sumSeries(data.timeline.error);
+    var warn = sumSeries(data.timeline.warn);
+    var hour = applied.granularity !== "day";
+    if (info && !applied.info) {
+      empty.textContent = "이 구간은 INFO 로그입니다. 오른쪽 ⚙에서 INFO를 켜면 추이가 보입니다.";
+    } else if (debug && !applied.debug) {
+      empty.textContent = "이 구간은 DEBUG 로그입니다. 오른쪽 ⚙에서 DEBUG를 켜면 추이가 보입니다.";
+    } else if (hour && error + warn === 0) {
+      empty.textContent = "최근 24시간 ERROR·WARN은 없습니다. 일자별로 바꾸면 이전 날짜 징후도 볼 수 있습니다.";
+    } else {
+      empty.textContent = "이 구간에 표시할 로그가 없습니다. 수집이 로그를 읽고 있는지 확인해 보세요.";
+    }
+    empty.classList.remove("d-none");
+  }
+
   function render(data) {
+    if (!data || !data.timeline) {
+      return;
+    }
+    setEmptyHint(data);
     if (area) {
       var tickLimit = applied.granularity === "day" ? 7 : 8;
       var datasets = datasetsFrom(data);
