@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.ai.gateway import annotate_findings
 from app.collectors.factory import collector_for
 from app.collectors.paths import expand_log_patterns
 from app.config import settings
@@ -35,13 +34,15 @@ def collect_and_analyze(db: Session, server_ids: list[int] | None = None) -> Col
         try:
             collector = collector_for(server, ssh_timeout=settings.collect.ssh_timeout_seconds)
             with collector:
-                events, files = _collect_server(db, server, collector)
+                events, files, missing = _collect_server(db, server, collector)
             record_events(events, server=server.name, files=files)
             total_lines += len(events)
             created = _analyze_server(db, server, events)
             total_findings += created
             server.last_collect_at = datetime.utcnow()
-            server.last_error = ""
+            server.last_error = missing
+            if missing:
+                errors.append(f"{server.name}: {missing}")
             nested.commit()
         except Exception as exc:  # noqa: BLE001
             nested.rollback()
@@ -59,7 +60,7 @@ def collect_and_analyze(db: Session, server_ids: list[int] | None = None) -> Col
     return run
 
 
-def _collect_server(db: Session, server: Server, collector) -> tuple[list, int]:
+def _collect_server(db: Session, server: Server, collector) -> tuple[list, int, str]:
     patterns = parse_json_list(server.log_paths)
     expanded = expand_log_patterns(
         patterns,
@@ -73,6 +74,10 @@ def _collect_server(db: Session, server: Server, collector) -> tuple[list, int]:
             if path not in seen:
                 seen.add(path)
                 resolved.append(path)
+    missing = ""
+    if expanded and not resolved:
+        shown = ", ".join(expanded[:8])
+        missing = f"로그 파일을 찾지 못했습니다: {shown}"
 
     events = []
     bytes_used = 0
@@ -121,7 +126,7 @@ def _collect_server(db: Session, server: Server, collector) -> tuple[list, int]:
                     )
                 )
     db.flush()
-    return events, len(resolved)
+    return events, len(resolved), missing
 
 
 def _analyze_server(db: Session, server: Server, events: list) -> int:
@@ -143,10 +148,9 @@ def _analyze_server(db: Session, server: Server, events: list) -> int:
         )
     )
     drafts = _merge_drafts(drafts)
-    comments = annotate_findings(drafts)
     created = 0
-    for draft, comment in zip(drafts, comments):
-        if _upsert_finding(db, server, draft, comment):
+    for draft in drafts:
+        if _upsert_finding(db, server, draft):
             created += 1
     db.flush()
     return created
@@ -187,7 +191,7 @@ def _merge_drafts(drafts: list[dict]) -> list[dict]:
     return list(grouped.values())
 
 
-def _upsert_finding(db: Session, server: Server, draft: dict, ai_comment: str) -> bool:
+def _upsert_finding(db: Session, server: Server, draft: dict) -> bool:
     occurred = draft.get("occurred_at") or datetime.utcnow()
     if occurred.tzinfo is not None:
         occurred = occurred.replace(tzinfo=None)
@@ -214,8 +218,6 @@ def _upsert_finding(db: Session, server: Server, draft: dict, ai_comment: str) -
                 merged.append(line)
         existing.sample_lines = dump_json(merged)
         existing.updated_at = datetime.utcnow()
-        if ai_comment and not existing.ai_comment:
-            existing.ai_comment = ai_comment
         return False
 
     db.add(
@@ -228,7 +230,6 @@ def _upsert_finding(db: Session, server: Server, draft: dict, ai_comment: str) -
             sample_lines=dump_json(samples),
             count=int(draft.get("count") or 1),
             plugin=plugin,
-            ai_comment=ai_comment or "",
             bucket=bucket,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),

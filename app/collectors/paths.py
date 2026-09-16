@@ -8,6 +8,21 @@ DATE_KEYS = ("%Y", "%m", "%d", "%j")
 HOUR_KEYS = ("%H",)
 
 
+def expand_home_path(pattern: str, home: str) -> str:
+    """`~` / `$HOME` 을 주어진 홈 디렉터리로 바꾼다. SFTP는 물결을 그대로 두지 않는다."""
+    text = (pattern or "").replace("\\", "/")
+    root = (home or "").replace("\\", "/").rstrip("/")
+    if not root:
+        return text
+    if text in {"~", "$HOME"}:
+        return root
+    if text.startswith("~/"):
+        return f"{root}/{text[2:]}"
+    if text.startswith("$HOME/"):
+        return f"{root}/{text[6:]}"
+    return text
+
+
 def expand_log_patterns(
     patterns: list[str],
     *,

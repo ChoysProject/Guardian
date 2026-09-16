@@ -1,4 +1,4 @@
 from app.ai.dify import findings_payload
-from app.ai.gateway import annotate_findings, review_resources
+from app.ai.gateway import annotate_findings, review_logs, review_resources
 
-__all__ = ["annotate_findings", "findings_payload", "review_resources"]
+__all__ = ["annotate_findings", "findings_payload", "review_logs", "review_resources"]

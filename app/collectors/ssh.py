@@ -4,6 +4,7 @@ import fnmatch
 from pathlib import PurePosixPath
 
 from app.collectors.base import CollectedChunk, Collector
+from app.collectors.paths import expand_home_path
 from app.models import Server
 
 
@@ -15,6 +16,7 @@ class SshTailCollector(Collector):
         self.timeout = timeout
         self._client = None
         self._sftp = None
+        self._home = ""
 
     def open(self) -> None:
         if self._sftp is not None:
@@ -34,7 +36,7 @@ class SshTailCollector(Collector):
 
     def resolve_paths(self, pattern: str) -> list[str]:
         self.open()
-        posix = PurePosixPath(pattern.replace("\\", "/"))
+        posix = PurePosixPath(expand_home_path(pattern, self._remote_home()))
         if not any(ch in posix.name for ch in "*?[]"):
             return [str(posix)]
         parent = str(posix.parent)
@@ -44,6 +46,29 @@ class SshTailCollector(Collector):
             return []
         matched = [f"{parent}/{name}" for name in sorted(names) if fnmatch.fnmatch(name, posix.name)]
         return matched
+
+    def _remote_home(self) -> str:
+        if self._home:
+            return self._home
+        home = ""
+        if self._client is not None:
+            try:
+                _stdin, stdout, _stderr = self._client.exec_command(
+                    'printf %s "$HOME"',
+                    timeout=self.timeout,
+                )
+                home = stdout.read().decode("utf-8", errors="replace").strip()
+            except Exception:
+                home = ""
+        if not home and self._sftp is not None:
+            try:
+                home = str(self._sftp.normalize(".") or "")
+            except Exception:
+                home = ""
+        if not home and getattr(self.server, "username", ""):
+            home = f"/home/{self.server.username}"
+        self._home = home
+        return home
 
     def read_incremental(
         self,

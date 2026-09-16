@@ -14,6 +14,10 @@ def test_health_and_dashboard_and_pipeline():
         home = client.get("/")
         assert home.status_code == 200
         assert "Guardian" in home.text
+        assert "guardian-brand" in home.text
+        assert "Goodmorning" not in home.text
+        assert "감시 현황" in home.text
+        assert 'sidenav-menu-heading">감시' not in home.text
         assert "로컬 서비스" in home.text
         assert "testserver" in home.text
         reached = client.get("/", headers={"host": "10.20.30.40:8080"})
@@ -26,6 +30,9 @@ def test_health_and_dashboard_and_pipeline():
         assert "로그 분석 보고서" in home.text
         assert "로그 분석 보고서 (추후 고도화)" not in home.text
         assert ">로그분석<" in home.text or "<span>로그분석</span>" in home.text
+        assert 'id="chartRealtimeTrend"' in home.text
+        assert 'id="trend-empty"' in home.text
+        assert "guardian-charts.js?v=trend-info-1" in home.text
         assert 'data-kind="log"' in home.text
         assert "아직 로그분석이 없습니다. 수집 뒤에 보고서 화면에서 만드세요." not in home.text
         assert "리소스 및 성능 플러그인" not in home.text
@@ -41,6 +48,8 @@ def test_health_and_dashboard_and_pipeline():
         assert 'data-kind="log"' in home_after.text
         assert "ERROR" in home_after.text
         assert "징후" in home_after.text
+        assert "finding-table-dash" in home_after.text
+        assert "finding-signature" in home_after.text
 
         findings = client.get("/api/findings")
         assert findings.status_code == 200
@@ -50,6 +59,25 @@ def test_health_and_dashboard_and_pipeline():
         assert any(name.startswith("stage1.") for name in plugins)
         assert "stage1.auth_failures" in plugins
         assert "stage1.disk_full" in plugins
+        findings_page = client.get("/findings")
+        assert findings_page.status_code == 200
+        assert 'id="finding-search"' in findings_page.text
+        assert "<th>AI</th>" not in findings_page.text
+        assert "guardian-findings.js" in findings_page.text
+        assert "data-finding-severity" in findings_page.text
+        assert "finding-signature" in findings_page.text
+        assert "신규" not in findings_page.text
+        assert "열린" in findings_page.text
+        assert "읽음" in findings_page.text
+        fid = body[0]["id"]
+        marked = client.post(f"/findings/{fid}/read", follow_redirects=True)
+        assert marked.status_code == 200
+        assert f'data-finding-id="{fid}"' in marked.text
+        assert 'data-read="1"' in marked.text
+        assert "징후를 읽음으로 두었습니다" in marked.text
+        opened = client.post(f"/findings/{fid}/unread", follow_redirects=True)
+        assert opened.status_code == 200
+        assert "징후를 다시 열었습니다" in opened.text
         detail_src = next(
             (item for item in body if any(
                 len(str(line)) >= 8 and "events in 60s window" not in str(line)
@@ -60,6 +88,8 @@ def test_health_and_dashboard_and_pipeline():
         detail = client.get(f"/findings/{detail_src['id']}")
         assert detail.status_code == 200
         assert "2단계 세부 플러그인으로 만들기" in detail.text
+        assert "수집 때마다 AI를 부르지 않습니다" in detail.text
+        assert "AI가 꺼져 있거나 호출에 실패했습니다" not in detail.text
         from_finding = client.get(f"/plugins/new?stage=2&finding={detail_src['id']}")
         assert from_finding.status_code == 200
         assert "2단계 세부 플러그인" in from_finding.text
@@ -124,6 +154,11 @@ def test_health_and_dashboard_and_pipeline():
         settings_page = client.get("/settings")
         assert settings_page.status_code == 200
         assert "auth.enabled" not in settings_page.text.lower() or "설정" in settings_page.text
+        assert "수집 주기마다 호출하지 않습니다" in settings_page.text
+        assert "시스템 설정" in settings_page.text
+        assert "읽은 값" not in settings_page.text
+        assert 'name="collect_interval"' in settings_page.text
+        assert 'name="daily_report_time"' in settings_page.text
 
         checkpoints = client.get("/api/checkpoints?offset=0&limit=50")
         assert checkpoints.status_code == 200
@@ -146,6 +181,11 @@ def test_health_and_dashboard_and_pipeline():
         assert "plugin-card" in log_plugins.text
         assert "plugin-card-grid" in log_plugins.text
         assert "plugin-card-desc" in log_plugins.text
+        assert "plugin-chips" in log_plugins.text
+        assert "plugin-chip" in log_plugins.text
+        assert "더보기" in log_plugins.text
+        assert "서버에서 쓰는 플러그인만 ON" in log_plugins.text
+        assert log_plugins.text.count('class="tag ok">ON') == 2
         assert "plugin-meta" in log_plugins.text
         assert "text-truncate report-summary" not in log_plugins.text
         assert "애플리케이션" in log_plugins.text
@@ -189,6 +229,8 @@ def test_health_and_dashboard_and_pipeline():
         assert "정보" in servers_page.text
         assert "수정" in servers_page.text
         assert 'id="server-search"' in servers_page.text
+        assert "server-add-actions" in servers_page.text
+        assert 'data-fidget="log-collect"' in servers_page.text
         assert "1단계 공통 플러그인" in servers_page.text
         assert "2단계 세부 플러그인" in servers_page.text
         assert "2단계 우리 시스템" not in servers_page.text
@@ -350,3 +392,75 @@ def test_plugin_from_picked_collected_line():
             db.close()
     finally:
         cleanup()
+
+
+def test_finding_signature_shortens_and_read_survives_same_day():
+    from datetime import datetime
+
+    from app.main import _shorten
+    from app.models import Finding, Server, SessionLocal
+    from app.pipeline.runner import _upsert_finding
+
+    assert _shorten("짧은", 36) == "짧은"
+    assert _shorten("x" * 50, 36).endswith("...")
+    assert len(_shorten("x" * 50, 36)) == 36
+
+    with TestClient(app) as client:
+        collected = client.post("/collect", follow_redirects=True)
+        assert collected.status_code == 200
+        page = client.get("/findings")
+        assert "finding-signature" in page.text
+        assert "신규" not in page.text
+
+    db = SessionLocal()
+    try:
+        item = db.query(Finding).order_by(Finding.count.desc()).first()
+        assert item is not None
+        item.read_at = datetime.utcnow()
+        before = item.count
+        db.commit()
+        server = db.get(Server, item.server_id)
+        _upsert_finding(
+            db,
+            server,
+            {
+                "occurred_at": item.occurred_at,
+                "plugin": item.plugin,
+                "signature": item.signature,
+                "severity": item.severity,
+                "count": 1,
+                "sample_lines": ["again"],
+                "host": item.host,
+            },
+        )
+        db.commit()
+        db.refresh(item)
+        assert item.read_at is not None
+        assert item.count == before + 1
+    finally:
+        db.close()
+
+
+def test_used_log_plugin_shows_on():
+    from app.models import Server, SessionLocal
+    from app.resource_collect import dump_plugins
+
+    with TestClient(app) as client:
+        before = client.get("/plugins/logs")
+        n = before.text.count('class="tag ok">ON')
+        assert n == 2
+        unused = client.get("/plugins/resources")
+        assert 'class="tag ok">ON' not in unused.text
+        with SessionLocal() as db:
+            demo = db.query(Server).filter(Server.name == "demo-local").one()
+            previous = demo.log_plugins
+            demo.log_plugins = dump_plugins(["java"])
+            db.commit()
+        try:
+            after = client.get("/plugins/logs")
+            assert after.text.count('class="tag ok">ON') == n + 1
+        finally:
+            with SessionLocal() as db:
+                demo = db.query(Server).filter(Server.name == "demo-local").one()
+                demo.log_plugins = previous
+                db.commit()

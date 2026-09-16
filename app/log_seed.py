@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from app.config import settings
 from app.db import dump_json, parse_json_list
+from app.demo_logs import extra_lines_for
 from app.models import Server
 
 TEST_DIR_NAME = "GuardianTestLogs"
@@ -31,17 +32,10 @@ def sample_log_text(server_name: str, when: datetime | None = None, systems: lis
     ]
     for idx in range(8):
         lines.append(f"{stamp} ERROR [worker] Connection refused to 10.0.0.12:5432 try={idx}")
-    lines.extend(
-        [
-            f"{syslog} {host} sshd[4412]: Failed password for root from 192.168.10.5 port 55122 ssh2",
-            f"{syslog} {host} sshd[4413]: Failed password for root from 192.168.10.5 port 55123 ssh2",
-            f"{syslog} {host} sshd[4414]: Failed password for invalid user oracle from 192.168.10.5 port 55124 ssh2",
-            f"{syslog} {host} sshd[4415]: Failed password for invalid user oracle from 192.168.10.5 port 55125 ssh2",
-            f"{syslog} {host} sshd[4416]: Failed password for admin from 192.168.10.5 port 55126 ssh2",
-            f"{stamp} WARN [disk] No space left on device /var",
-            f"{stamp} ERROR [disk] No space left on device /var",
-        ]
-    )
+    lines.extend(extra_lines_for("auth_failures", stamp, syslog, host))
+    lines.extend(extra_lines_for("disk_full", stamp, syslog, host))
+    for name in systems or []:
+        lines.extend(extra_lines_for(name, stamp, syslog, host))
     lines.append(f"{stamp} INFO [batch] guardian test log seed finished")
     return "\n".join(lines) + "\n"
 

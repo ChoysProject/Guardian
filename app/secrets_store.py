@@ -28,9 +28,9 @@ def _fernet() -> Fernet:
 
 
 def _restrict(path: Path) -> None:
-    """소유자만 읽게 한다. 윈도우에서는 되는 만큼만 적용된다."""
+    """소유자만 읽게 한다. 폴더는 들어가려면 실행 비트가 필요하다."""
     try:
-        os.chmod(path, 0o600)
+        os.chmod(path, 0o700 if path.is_dir() else 0o600)
     except OSError:
         pass
 

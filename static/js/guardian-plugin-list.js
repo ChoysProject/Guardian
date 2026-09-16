@@ -1,9 +1,10 @@
 (function () {
   var search = document.getElementById("plugin-search");
-  var panes = document.querySelectorAll("[data-stage-pane]");
-  var filters = document.querySelectorAll("[data-stage-filter]");
-  if (!panes.length || !filters.length) {
-    return;
+  var panes = Array.prototype.slice.call(document.querySelectorAll("[data-stage-pane]"));
+  var filters = Array.prototype.slice.call(document.querySelectorAll("[data-stage-filter]"));
+  var list = document.querySelector("[data-plugin-list]");
+  if (!panes.length && list) {
+    panes = [list];
   }
 
   var stage = "1";
@@ -22,27 +23,41 @@
       btn.classList.toggle("btn-outline-secondary", !on);
     });
     panes.forEach(function (pane) {
-      var active = pane.getAttribute("data-stage-pane") === stage;
-      pane.classList.toggle("d-none", !active);
+      var paneStage = pane.getAttribute("data-stage-pane");
+      var active = !paneStage || paneStage === stage;
+      if (paneStage) {
+        pane.classList.toggle("d-none", !active);
+      }
       if (!active) {
         return;
       }
       var groups = pane.querySelectorAll("[data-plugin-group]");
       var visible = 0;
-      groups.forEach(function (group) {
-        var cards = group.querySelectorAll("[data-plugin-card]");
-        var shown = 0;
-        cards.forEach(function (card) {
+      if (!groups.length) {
+        pane.querySelectorAll("[data-plugin-card]").forEach(function (card) {
           var hay = (card.getAttribute("data-search") || "").toLowerCase();
           var ok = !query || hay.indexOf(query) !== -1;
           card.classList.toggle("d-none", !ok);
           if (ok) {
-            shown += 1;
+            visible += 1;
           }
         });
-        group.classList.toggle("d-none", shown === 0);
-        visible += shown;
-      });
+      } else {
+        groups.forEach(function (group) {
+          var cards = group.querySelectorAll("[data-plugin-card]");
+          var shown = 0;
+          cards.forEach(function (card) {
+            var hay = (card.getAttribute("data-search") || "").toLowerCase();
+            var ok = !query || hay.indexOf(query) !== -1;
+            card.classList.toggle("d-none", !ok);
+            if (ok) {
+              shown += 1;
+            }
+          });
+          group.classList.toggle("d-none", shown === 0);
+          visible += shown;
+        });
+      }
       var empty = pane.querySelector("[data-plugin-empty-search]");
       if (empty) {
         empty.classList.toggle("d-none", !query || visible > 0);
@@ -59,5 +74,26 @@
   if (search) {
     search.addEventListener("input", apply);
   }
-  apply();
+  if (panes.length || search) {
+    apply();
+  }
+
+  document.addEventListener("click", function (ev) {
+    var btn = ev.target.closest("[data-plugin-more]");
+    if (!btn) {
+      return;
+    }
+    ev.preventDefault();
+    var box = btn.closest(".plugin-chips");
+    if (!box) {
+      return;
+    }
+    var extras = box.querySelectorAll(".is-extra");
+    var open = btn.getAttribute("aria-expanded") === "true";
+    extras.forEach(function (el) {
+      el.classList.toggle("d-none", open);
+    });
+    btn.setAttribute("aria-expanded", open ? "false" : "true");
+    btn.textContent = open ? ("+" + extras.length + "개 더보기") : "접기";
+  });
 })();

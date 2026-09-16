@@ -15,6 +15,12 @@ def test_sample_log_text_hits_builtin_rules():
     assert "MCI 012" not in sample_log_text("eai-01")
 
 
+def test_sample_log_text_includes_selected_plugins():
+    text = sample_log_text("wsl-01", when=datetime(2026, 9, 13, 19, 5, 3), systems=["java"])
+    assert "OutOfMemoryError" in text
+    assert "INZENT" not in text
+
+
 def test_write_local_test_log_appends_and_attaches(tmp_path, monkeypatch):
     from app.config import settings
 

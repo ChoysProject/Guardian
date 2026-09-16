@@ -34,14 +34,24 @@ foreach ($item in $Copy) {
     Copy-Item -Recurse -Force $src $Stage
 }
 
-Get-ChildItem -Path $Stage -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
-Get-ChildItem -Path $Stage -Recurse -Directory -Filter ".pytest_cache" | Remove-Item -Recurse -Force
-Get-ChildItem -Path $Stage -Recurse -File -Include *.pyc,*.pyo | Remove-Item -Force
-
 $Pip = Join-Path $Root ".venv\Scripts\python.exe"
 if (-not (Test-Path $Pip)) {
     $Pip = "py"
 }
+
+Write-Host "시연용 샘플 로그를 만듭니다"
+& $Pip (Join-Path $Root "scripts\make_demo_logs.py")
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "샘플 로그 생성에 실패했습니다. sample_logs 가 있으면 그대로 넣습니다."
+}
+$Sample = Join-Path $Root "sample_logs"
+if (Test-Path $Sample) {
+    Copy-Item -Recurse -Force $Sample (Join-Path $Stage "sample_logs")
+}
+
+Get-ChildItem -Path $Stage -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
+Get-ChildItem -Path $Stage -Recurse -Directory -Filter ".pytest_cache" | Remove-Item -Recurse -Force
+Get-ChildItem -Path $Stage -Recurse -File -Include *.pyc,*.pyo | Remove-Item -Force
 
 Write-Host "의존성을 lib/ 에 풉니다 (Windows 64bit CPython 3.13, 인터넷은 여기서만)"
 & $Pip -m pip install `

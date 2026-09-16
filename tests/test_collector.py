@@ -1,7 +1,9 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.collectors.factory import collector_for
 from app.collectors.local import LocalTailCollector
+from app.collectors.paths import expand_home_path
 from app.collectors.ssh import SshTailCollector
 from app.models import Server
 
@@ -43,3 +45,42 @@ def test_collector_for_ssh_uses_server_auth():
     assert isinstance(collector, SshTailCollector)
     assert collector.server is server
     assert collector_for(Server(name="local", collector_type="local")).__class__ is LocalTailCollector
+
+
+def test_expand_home_path_tilde_and_dollar_home():
+    assert expand_home_path("~/DailyData/logs/springboot*", "/home/choys") == (
+        "/home/choys/DailyData/logs/springboot*"
+    )
+    assert expand_home_path("$HOME/DailyData/logs/springboot*", "/home/choys") == (
+        "/home/choys/DailyData/logs/springboot*"
+    )
+    assert expand_home_path("/var/log/app.log", "/home/choys") == "/var/log/app.log"
+
+
+def test_local_resolve_expands_user_home(tmp_path: Path, monkeypatch):
+    logs = tmp_path / "DailyData" / "logs"
+    logs.mkdir(parents=True)
+    target = logs / "springboot-app.log"
+    target.write_text("ERROR boom\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    collector = LocalTailCollector()
+    paths = collector.resolve_paths("~/DailyData/logs/springboot*")
+    assert any(Path(item).name == "springboot-app.log" for item in paths)
+
+
+def test_ssh_resolve_expands_tilde_before_listdir():
+    server = Server(name="EAI_LOG", collector_type="ssh", username="choys")
+    collector = SshTailCollector(server)
+    collector._home = "/home/choys"
+    collector._sftp = SimpleNamespace(
+        listdir=lambda parent: (
+            ["springboot.log", "other.log"]
+            if parent == "/home/choys/DailyData/logs"
+            else (_ for _ in ()).throw(FileNotFoundError(parent))
+        )
+    )
+    collector.open = lambda: None
+    paths = collector.resolve_paths("~/DailyData/logs/springboot*")
+    assert paths == ["/home/choys/DailyData/logs/springboot.log"]
+    assert collector.resolve_paths("~/DailyData/logs/missing*") == []

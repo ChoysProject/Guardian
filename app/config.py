@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class AppSettings(BaseModel):
-    name: str = "Goodmorning Check"
+    name: str = "Guardian"
     host: str = "127.0.0.1"
     port: int = 8080
     data_dir: str = "data"
@@ -124,3 +125,49 @@ def load_settings(config_path: Path | None = None) -> Settings:
 
 
 settings = load_settings()
+
+_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$")
+
+
+def _normalize_report_time(value: str) -> str:
+    text = (value or "").strip()
+    if not _TIME_RE.match(text):
+        raise ValueError("일일 보고서 시각은 HH:MM 형식입니다.")
+    hour_s, minute_s = text.split(":")[:2]
+    hour = int(hour_s)
+    minute = int(minute_s)
+    if hour > 23 or minute > 59:
+        raise ValueError("일일 보고서 시각은 HH:MM 형식입니다.")
+    return f"{hour:02d}:{minute:02d}"
+
+
+def update_runtime_settings(interval_seconds: int | str, daily_report_time: str) -> None:
+    try:
+        interval = int(interval_seconds)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("수집 주기는 초 단위 숫자입니다.") from exc
+    if interval < 15 or interval > 86400:
+        raise ValueError("수집 주기는 15초에서 86400초 사이입니다.")
+    time_s = _normalize_report_time(daily_report_time)
+    path = settings.config_path
+    data = _read_yaml(path) if path.exists() else {}
+    if not isinstance(data, dict):
+        data = {}
+    collect = data.get("collect")
+    if not isinstance(collect, dict):
+        collect = {}
+        data["collect"] = collect
+    collect["interval_seconds"] = interval
+    sched = data.get("scheduler")
+    if not isinstance(sched, dict):
+        sched = {}
+        data["scheduler"] = sched
+    sched["daily_report_time"] = time_s
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("w", encoding="utf-8") as fh:
+            yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False)
+    except OSError as exc:
+        raise ValueError("설정 파일을 저장하지 못했습니다.") from exc
+    settings.collect.interval_seconds = interval
+    settings.scheduler.daily_report_time = time_s

@@ -6,6 +6,7 @@ from typing import Any
 from app.plugins.loader import apply_yaml_rules, load_manifests, load_python_callable, targets_match
 from app.plugins.types import PluginContext, PluginManifest
 from app.pipeline.normalize import NormalizedEvent
+from app.server_modes import parse_list
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,33 @@ CATEGORY_ORDER = {
 }
 
 GLOBAL_STAGE3 = {"daily_report", "server_report"}
+
+
+def plugin_usage_names(servers) -> set[str]:
+    """서버에 실제로 걸려 있는 플러그인·수집 스크립트 이름."""
+    from app.resource_collect import DEFAULT_PLUGIN
+
+    used: set[str] = set()
+    log_names: list[str] = []
+    for server in servers or []:
+        if getattr(server, "collect_logs", False):
+            log_names.append(server.name)
+            used.update(parse_list(getattr(server, "log_plugins", "") or ""))
+            used.update(parse_list(getattr(server, "custom_plugins", "") or ""))
+        if getattr(server, "collect_resources", False):
+            chosen = parse_list(getattr(server, "plugins", "") or "")
+            if chosen:
+                used.update(chosen)
+            else:
+                used.add(DEFAULT_PLUGIN)
+    if log_names:
+        used.update(GLOBAL_STAGE3)
+        for manifest in load_manifests():
+            if manifest.stage != 3 or not manifest.enabled or manifest.name in GLOBAL_STAGE3:
+                continue
+            if any(targets_match(manifest, name) for name in log_names):
+                used.add(manifest.name)
+    return {name for name in used if name}
 
 
 def _is_always_stage1(manifest: PluginManifest) -> bool:

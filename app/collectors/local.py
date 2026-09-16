@@ -13,7 +13,7 @@ class LocalTailCollector(Collector):
     name = "local"
 
     def resolve_paths(self, pattern: str) -> list[str]:
-        raw = Path(pattern)
+        raw = Path(pattern).expanduser()
         target = raw if raw.is_absolute() else ROOT / raw
         text = str(target)
         if any(ch in text for ch in "*?[]"):

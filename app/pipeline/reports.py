@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.ai.gateway import review_logs
 from app.config import settings
 from app.cursors import load_all
 from app.db import parse_json_list
@@ -62,8 +63,9 @@ def generate_reports(
             if item.server_id == server.id and _finding_in_period(item, stamp, start_utc, end_utc)
         ]
         older = sum(1 for item in findings if item.server_id == server.id) - len(items)
-        stats = _server_report_stats(server, stamp, files=_cursor_files(server.id), older_findings=max(older, 0))
-        base_cfg = {"mode": "per_server", "server_name": server.name, "stats": stats}
+        stats = _server_report_stats(server, stamp, files=_cursor_files(server), older_findings=max(older, 0))
+        ai = review_logs(_log_review_payload(server.name, stats, items))
+        base_cfg = {"mode": "per_server", "server_name": server.name, "stats": stats, "ai": ai}
         dedicated = assigned_plugins(server.name, stage=3)
         if plugin_names:
             dedicated = [item for item in dedicated if item.name in plugin_names]
@@ -115,8 +117,13 @@ def _finding_in_period(item: Finding, stamp: str, start_utc: datetime, end_utc: 
     return False
 
 
-def _cursor_files(server_id: int) -> int:
-    return sum(1 for item in load_all() if int(item.get("server_id") or 0) == int(server_id))
+def _cursor_files(server: Server) -> int:
+    return sum(
+        1
+        for item in load_all()
+        if int(item.get("server_id") or 0) == int(server.id)
+        and str(item.get("server_name") or "") == server.name
+    )
 
 
 def _server_report_stats(server: Server, stamp: str, files: int = 0, older_findings: int = 0) -> dict:
@@ -133,6 +140,27 @@ def _server_report_stats(server: Server, stamp: str, files: int = 0, older_findi
         "files": int(counts.get("files") or files or 0),
         "last_collect": last,
         "older_findings": int(older_findings or 0),
+    }
+
+
+def _log_review_payload(server_name: str, stats: dict, items: list[dict]) -> dict:
+    return {
+        "server": server_name,
+        "stats": {
+            "lines": int(stats.get("lines") or 0),
+            "error": int(stats.get("error") or 0),
+            "warn": int(stats.get("warn") or 0),
+            "files": int(stats.get("files") or 0),
+        },
+        "findings": [
+            {
+                "severity": item.get("severity"),
+                "signature": item.get("signature"),
+                "count": item.get("count"),
+                "plugin": item.get("plugin"),
+            }
+            for item in items[:20]
+        ],
     }
 
 
@@ -232,6 +260,8 @@ def _log_card_metrics(server: Server, findings: list[Finding]) -> dict:
         level, status = "danger", "위험"
     elif warn_count:
         level, status = "warn", "주의"
+    elif server.last_error:
+        level, status = "warn", "수집 문제"
     else:
         level, status = "ok", "여유"
     stamp = "-"
@@ -254,11 +284,16 @@ def _log_card_metrics(server: Server, findings: list[Finding]) -> dict:
     problem_text = " · ".join(problems)
     if extra:
         problem_text = f"{problem_text} 외 {extra}건" if problem_text else f"징후 {extra}건"
+    if server.last_error:
+        problem_text = server.last_error if not problem_text else f"{problem_text} · {server.last_error}"
+    verdict = _log_verdict(error_count, warn_count, len(findings))
+    if server.last_error and not error_count and not warn_count:
+        verdict = server.last_error
     return {
         "date": stamp,
         "level": level,
         "status": status,
-        "verdict": _log_verdict(error_count, warn_count, len(findings)),
+        "verdict": verdict,
         "problem_text": problem_text,
         "cells": [
             {"label": "ERROR", "value": str(error_count)},

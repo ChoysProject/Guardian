@@ -44,16 +44,39 @@ RESOURCE_SYSTEM = (
     "risks 와 actions 는 각각 최대 3개. 위험 없으면 빈 배열."
 )
 
+LOG_SYSTEM = (
+    "로그 분석 Finding 요약을 한국어로 해석한다. "
+    "facts 에 있는 징후·건수·레벨·처리 줄 수만 사용한다. 없는 원인과 없는 수치는 만들지 않는다. "
+    "마크다운 보고서와 영어 서두를 쓰지 않는다. "
+    '출력은 {"summary": "두세 문장", "risks": ["..."], "actions": ["..."]} JSON 객체만 낸다. '
+    "summary 는 줄바꿈 없이 두세 문장이다. "
+    "risks 와 actions 는 각각 최대 3개. 위험 없으면 빈 배열."
+)
+
 
 def review_resources(payload: dict[str, Any]) -> dict[str, Any]:
     """리소스 추이 통계를 LLM에 보내 총평을 받는다. 실패하면 규칙 결과만 남긴다."""
+    return _review_payload(payload, RESOURCE_SYSTEM, "AI 리소스 총평 실패", openai_fn=_call_openai_resources)
+
+
+def review_logs(payload: dict[str, Any]) -> dict[str, Any]:
+    """로그 Finding 요약을 LLM에 보내 총평을 받는다. 실패하면 규칙 결과만 남긴다."""
+    return _review_payload(payload, LOG_SYSTEM, "AI 로그 총평 실패", openai_fn=_call_openai_logs)
+
+
+def _review_payload(
+    payload: dict[str, Any],
+    system: str,
+    fail_log: str,
+    openai_fn,
+) -> dict[str, Any]:
     if not payload:
         return {}
     try:
         if settings.openai.enabled and settings.openai.api_key:
-            return _call_openai_resources(payload)
+            return openai_fn(payload)
         if settings.dify.enabled:
-            comments = _call_dify(_dify_review_input(payload))
+            comments = _call_dify(_dify_review_input(payload, system))
             text = "\n".join(item for item in comments if item).strip()
             if not text:
                 return {}
@@ -63,17 +86,25 @@ def review_resources(payload: dict[str, Any]) -> dict[str, Any]:
             return {"summary": text}
         return {}
     except Exception:
-        logger.exception("AI 리소스 총평 실패 — 규칙 결과만 유지합니다.")
+        logger.exception("%s — 규칙 결과만 유지합니다.", fail_log)
         return {}
 
 
 def _call_openai_resources(payload: dict[str, Any]) -> dict[str, Any]:
+    return _call_openai_review(payload, RESOURCE_SYSTEM)
+
+
+def _call_openai_logs(payload: dict[str, Any]) -> dict[str, Any]:
+    return _call_openai_review(payload, LOG_SYSTEM)
+
+
+def _call_openai_review(payload: dict[str, Any], system: str) -> dict[str, Any]:
     url = settings.openai.base_url.rstrip("/") + "/chat/completions"
     body = {
         "model": settings.openai.model,
         "temperature": 0.2,
         "messages": [
-            {"role": "system", "content": RESOURCE_SYSTEM},
+            {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ],
     }
@@ -94,13 +125,28 @@ def _call_openai_resources(payload: dict[str, Any]) -> dict[str, Any]:
     return _parse_review(text)
 
 
-def _dify_review_input(payload: dict[str, Any]) -> dict[str, Any]:
+def _dify_review_input(payload: dict[str, Any], system: str = RESOURCE_SYSTEM) -> dict[str, Any]:
+    findings = payload.get("findings")
+    if findings is not None:
+        stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}
+        return {
+            "task": "log_review",
+            "instruction": system,
+            "facts": {
+                "server": payload.get("server"),
+                "lines": stats.get("lines"),
+                "error": stats.get("error"),
+                "warn": stats.get("warn"),
+                "findings": list(findings)[:20],
+            },
+            "stats": stats,
+        }
     cpu = payload.get("cpu") or {}
     mem = payload.get("mem") or {}
     disks = payload.get("disks") or []
     return {
         "task": "resource_review",
-        "instruction": RESOURCE_SYSTEM,
+        "instruction": system,
         "facts": {
             "server": payload.get("server"),
             "cpu_last_pct": cpu.get("last"),
