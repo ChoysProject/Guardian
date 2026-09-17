@@ -124,31 +124,77 @@ def _write_dummy_logs(force: bool = False) -> None:
     _write_hourly_web_logs(now, force=force)
 
 
-def _write_hourly_web_logs(now: datetime, force: bool = False) -> None:
+def _write_hourly_web_logs(now: datetime, force: bool = False, *, healthy: bool = False) -> None:
+    writer = _healthy_web_lines if healthy else _web_lines
     for hour_offset in range(47, -1, -1):
         stamp = now - timedelta(hours=hour_offset)
-        folder = ROOT / "sample_logs" / "web" / "hourly" / stamp.strftime("%Y-%m-%d")
+        if healthy:
+            folder = ROOT / "sample_logs" / "healthy" / "web" / "hourly" / stamp.strftime("%Y-%m-%d")
+        else:
+            folder = ROOT / "sample_logs" / "web" / "hourly" / stamp.strftime("%Y-%m-%d")
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{stamp.strftime('%H')}.log"
         if path.exists() and not force:
             continue
-        path.write_text("\n".join(_web_lines(stamp, 0, stamp.hour)) + "\n", encoding="utf-8")
+        path.write_text("\n".join(writer(stamp, 0, stamp.hour)) + "\n", encoding="utf-8")
+
+
+def _write_healthy_dummy_logs(force: bool = False) -> None:
+    now = wall_now().replace(minute=0, second=0, microsecond=0)
+    writers = {
+        "web": _healthy_web_lines,
+        "db": _healthy_db_lines,
+        "auth": _healthy_auth_lines,
+    }
+    for name, writer in writers.items():
+        folder = ROOT / "sample_logs" / "healthy" / name
+        folder.mkdir(parents=True, exist_ok=True)
+        for day_offset in range(6, -1, -1):
+            day = (now - timedelta(days=day_offset)).date()
+            path = folder / f"{day.isoformat()}.log"
+            if path.exists() and not force:
+                continue
+            lines: list[str] = []
+            last_hour = now.hour if day_offset == 0 else 23
+            for hour in range(last_hour + 1):
+                stamp = datetime(day.year, day.month, day.day, hour)
+                lines.extend(writer(stamp, day_offset, hour))
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_hourly_web_logs(now, force=force, healthy=True)
 
 
 def _web_lines(stamp: datetime, day_offset: int, hour: int) -> list[str]:
     ts = stamp.strftime("%Y-%m-%d %H:%M:%S")
     business = 9 <= hour <= 18
-    info_n = 10 if business else 4
-    warn_n = 3 if business else 1
-    error_n = (6 + (hour % 3)) if business else (1 + (hour % 2))
-    debug_n = 2
-    if day_offset == 0 and 10 <= hour <= 12:
-        error_n += 8
-    lines = [f"{ts} INFO [api] request accepted path=/health"] * info_n
-    lines += [f"{ts} WARN [api] slow response 1200ms path=/orders"] * warn_n
-    lines += [f"{ts} ERROR [api] Connection refused to 10.0.0.12:8080"] * error_n
-    lines += [f"{ts} DEBUG [cache] miss key=session:{hour}"] * debug_n
+    lines = [
+        f"{ts} INFO [api] request accepted path=/health",
+        f"{ts} INFO [api] request accepted path=/orders/{8800 + hour} status=200",
+        f"{ts} INFO [api] request accepted path=/orders/{8900 + hour} status=200",
+        f"{ts} DEBUG [cache] hit key=session:{hour}",
+    ]
+    if not business:
+        lines.append(f"{ts} INFO [api] request accepted path=/metrics status=200")
+        return lines
+    lines += [
+        f"{ts} INFO [api] request accepted path=/cart status=200",
+        f"{ts} INFO [api] request accepted path=/pay/ready status=200",
+    ]
+    if hour in (10, 11, 12) and day_offset == 0:
+        lines.append(f"{ts} WARN [api] slow response 1200ms path=/orders")
+        lines += [f"{ts} ERROR [api] Connection refused to 10.0.0.12:8080"] * 3
+    elif hour in (15,):
+        lines.append(f"{ts} WARN [api] slow response 900ms path=/orders/summary")
     return lines
+
+
+def _healthy_web_lines(stamp: datetime, day_offset: int, hour: int) -> list[str]:
+    ts = stamp.strftime("%Y-%m-%d %H:%M:%S")
+    return [
+        f"{ts} INFO [api] request accepted path=/health",
+        f"{ts} INFO [api] request accepted path=/orders/{8100 + hour} status=200",
+        f"{ts} INFO [api] request accepted path=/orders/{8200 + hour} status=200",
+        f"{ts} DEBUG [cache] hit key=session:ok:{hour}",
+    ]
 
 
 def _db_lines(stamp: datetime, day_offset: int, hour: int) -> list[str]:
@@ -156,11 +202,12 @@ def _db_lines(stamp: datetime, day_offset: int, hour: int) -> list[str]:
     lines = [
         f"{ts} INFO [postgres] checkpoint complete",
         f"{ts} DEBUG [postgres] autovacuum skipped",
+        f"{ts} INFO [postgres] connection authorized user=app db=shop",
     ]
-    if 9 <= hour <= 11 or hour == 15:
-        lines += [f"{ts} ERROR [postgres] Connection refused to 10.0.0.12:5432"] * (4 + hour % 5)
-        lines += [f"{ts} WARN [postgres] retrying replica 10.0.0.13"] * 2
-    if hour == 12:
+    if day_offset == 0 and hour in (10, 11):
+        lines += [f"{ts} ERROR [postgres] Connection refused to 10.0.0.12:5432"] * 2
+        lines.append(f"{ts} WARN [postgres] retrying replica 10.0.0.13")
+    if day_offset == 0 and hour == 12:
         lines += [
             f"{ts} WARN [disk] No space left on device /var",
             f"{ts} ERROR [disk] No space left on device /var",
@@ -168,17 +215,36 @@ def _db_lines(stamp: datetime, day_offset: int, hour: int) -> list[str]:
     return lines
 
 
+def _healthy_db_lines(stamp: datetime, day_offset: int, hour: int) -> list[str]:
+    ts = stamp.strftime("%Y-%m-%d %H:%M:%S")
+    return [
+        f"{ts} INFO [postgres] checkpoint complete",
+        f"{ts} DEBUG [postgres] autovacuum skipped",
+        f"{ts} INFO [postgres] connection authorized user=app db=shop",
+    ]
+
+
 def _auth_lines(stamp: datetime, day_offset: int, hour: int) -> list[str]:
     ts = stamp.strftime("%Y-%m-%d %H:%M:%S")
-    lines = [f"{ts} INFO [sshd] Accepted publickey for deploy from 10.0.1.8"]
-    if hour in (2, 3, 11, 22):
+    lines = [
+        f"{ts} INFO [sshd] Accepted publickey for deploy from 10.0.1.8",
+        f"{ts} INFO [sshd] Accepted publickey for ops from 10.0.1.9",
+    ]
+    if day_offset == 0 and hour in (2, 11):
         lines += [
             f"{ts} ERROR [sshd] Failed password for root from 192.168.10.5 port 55122 ssh2",
             f"{ts} ERROR [sshd] Failed password for root from 192.168.10.5 port 55123 ssh2",
             f"{ts} ERROR [sshd] Failed password for invalid user oracle from 192.168.10.5 port 55124 ssh2",
-            f"{ts} ERROR [sshd] Failed password for admin from 192.168.10.5 port 55126 ssh2",
         ]
     return lines
+
+
+def _healthy_auth_lines(stamp: datetime, day_offset: int, hour: int) -> list[str]:
+    ts = stamp.strftime("%Y-%m-%d %H:%M:%S")
+    return [
+        f"{ts} INFO [sshd] Accepted publickey for deploy from 10.0.1.8",
+        f"{ts} INFO [sshd] Accepted publickey for ops from 10.0.1.9",
+    ]
 
 
 def _demo_log_text() -> str:

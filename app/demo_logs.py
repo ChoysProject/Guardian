@@ -26,6 +26,105 @@ CATALOG = (
 )
 
 
+def healthy_lines_for(plugin: str, stamp: str, syslog: str, host: str) -> list[str]:
+    """플러그인 규칙에 안 걸리는 정상 INFO/DEBUG 줄."""
+    name = (plugin or "").strip().lower()
+    lines = {
+        "java": [
+            f"{stamp} INFO [jvm] JVM started heap=2g",
+            f"{stamp} INFO [jvm] GC young collection 12ms",
+            f"{stamp} INFO [http] GET /orders/1201 200 18ms",
+            f"{stamp} INFO [http] GET /orders/1202 200 21ms",
+            f"{stamp} DEBUG [http] request completed path=/health",
+        ],
+        "springboot": [
+            f"{stamp} INFO org.springframework.boot.StartupInfoLogger Started DemoApplication in 2.1 seconds",
+            f"{stamp} INFO org.apache.catalina.core.StandardService Tomcat started on port 8080",
+            f"{stamp} INFO org.springframework.web.servlet.DispatcherServlet Initializing Servlet 'dispatcherServlet'",
+            f"{stamp} INFO [order] GET /orders/8801 200 16ms",
+            f"{stamp} INFO [order] POST /orders 201 44ms",
+            f"{stamp} DEBUG [order] health UP",
+        ],
+        "python": [
+            f"{stamp} INFO [uvicorn] Application startup complete",
+            f"{stamp} INFO [app] GET /batch/jobs 200",
+            f"{stamp} INFO [app] job daily-settle finished rows=120",
+            f"{stamp} DEBUG [app] cache hit key=job:daily-settle",
+        ],
+        "nginx": [
+            f'{stamp} INFO nginx: worker process 2211 started',
+            f'{stamp} 10.20.0.8 - - "GET /health HTTP/1.1" 200 12',
+            f'{stamp} 10.20.0.8 - - "GET /orders/8801 HTTP/1.1" 200 512',
+            f'{stamp} 10.20.0.9 - - "POST /orders HTTP/1.1" 201 88',
+        ],
+        "apache": [
+            f'{stamp} INFO apache: configured -- resuming normal operations',
+            f'{stamp} 10.20.0.8 - - "GET /health HTTP/1.1" 200 12',
+            f'{stamp} 10.20.0.8 - - "GET /static/app.js HTTP/1.1" 200 4096',
+        ],
+        "tomcat": [
+            f"{stamp} INFO org.apache.catalina.startup.Catalina Server startup in [2103] milliseconds",
+            f"{stamp} INFO org.apache.coyote.http11.Http11NioProtocol Starting ProtocolHandler [http-nio-8080]",
+            f"{stamp} INFO [http] GET /orders/8801 200",
+        ],
+        "jeus": [
+            f"{stamp} INFO tmax domain started engine=8",
+            f"{stamp} INFO deploy order-app success",
+            f"{stamp} INFO http listener 8080 ready",
+        ],
+        "weblogic": [
+            f"{stamp} INFO WebLogic Server started in RUNNING mode",
+            f"{stamp} INFO data source orderDS connected",
+            f"{stamp} INFO [http] GET /orders/8801 200",
+        ],
+        "mysql": [
+            f"{stamp} INFO mysqld ready for connections version=8.0",
+            f"{stamp} INFO InnoDB buffer pool ready",
+            f"{stamp} INFO [sql] SELECT orders id=8801 ok 2ms",
+        ],
+        "postgres": [
+            f"{stamp} INFO:  database system is ready to accept connections",
+            f"{stamp} INFO:  checkpoint complete",
+            f"{stamp} INFO:  autovacuum launcher started",
+            f"{stamp} DEBUG:  connection authorized: user=app database=shop",
+        ],
+        "oracle": [
+            f"{stamp} INFO database shop opened",
+            f"{stamp} INFO listener LISTENER on port 1521 ready",
+            f"{stamp} INFO [sql] SELECT orders id=8801 ok",
+        ],
+        "kafka": [
+            f"{stamp} INFO kafka.server KafkaServer started (kafka.server.KafkaServer)",
+            f"{stamp} INFO kafka.log [Log partition=orders-0, dir=/data] Loading producer state",
+            f"{stamp} INFO kafka.cluster Partition orders-0 leader is 1",
+        ],
+        "rabbitmq": [
+            f"{stamp} INFO Server startup complete; 3 plugins started",
+            f"{stamp} INFO accepting AMQP connection 10.20.0.21",
+            f"{stamp} INFO queue orders declared",
+        ],
+        "redis": [
+            f"{stamp} INFO Redis version=7.2.4 64 bit",
+            f"{stamp} INFO Ready to accept connections tcp=6379",
+            f"{stamp} INFO replica 10.20.0.9 sync ok",
+        ],
+        "systemd": [
+            f"{syslog} {host} systemd[1]: Started nginx.service",
+            f"{syslog} {host} systemd[1]: Started ssh.service",
+            f"{syslog} {host} systemd[1]: Reached target Multi-User System",
+        ],
+        "auth_failures": [
+            f"{syslog} {host} sshd[2201]: Accepted publickey for deploy from 10.0.1.8 port 51022 ssh2",
+            f"{syslog} {host} sshd[2202]: Accepted publickey for ops from 10.0.1.9 port 51023 ssh2",
+        ],
+        "disk_full": [
+            f"{stamp} INFO [disk] /var usage=41% inodes=12%",
+            f"{stamp} INFO [disk] /data usage=58% inodes=9%",
+        ],
+    }
+    return list(lines.get(name, []))
+
+
 def extra_lines_for(plugin: str, stamp: str, syslog: str, host: str) -> list[str]:
     """1단계 플러그인이 잡을 시연용 줄."""
     name = (plugin or "").strip().lower()
@@ -146,16 +245,50 @@ def _stamp_parts(when: datetime | None = None) -> tuple[str, str, str]:
     return stamp, syslog, now.strftime("%Y-%m-%d")
 
 
+def _mix(healthy: list[str], extra: list[str]) -> list[str]:
+    if not healthy:
+        return list(extra)
+    mid = max(1, len(healthy) // 2)
+    return healthy[:mid] + extra + healthy[mid:]
+
+
+def catalog_lines_for(plugin: str, stamp: str, syslog: str, host: str) -> list[str]:
+    """정상 줄 사이에 이상 줄을 섞습니다."""
+    return _mix(
+        healthy_lines_for(plugin, stamp, syslog, host),
+        extra_lines_for(plugin, stamp, syslog, host),
+    )
+
+
 def common_lines(host: str, stamp: str, syslog: str) -> list[str]:
+    """대부분 정상이고, 공통 규칙이 잡을 이상만 조금 넣습니다."""
     lines = [
         f"{stamp} INFO [api] Guardian demo log started",
         f"{stamp} INFO [api] health check ok",
     ]
-    for idx in range(8):
+    for idx in range(12):
+        lines.append(f"{stamp} INFO [api] request accepted path=/orders/{8800 + idx} status=200")
+    lines.append(f"{stamp} DEBUG [cache] hit key=session:demo")
+    lines.append(f"{stamp} WARN [api] slow response 820ms path=/orders/summary")
+    for idx in range(2):
         lines.append(f"{stamp} ERROR [worker] Connection refused to 10.0.0.12:5432 try={idx}")
-    lines.extend(extra_lines_for("auth_failures", stamp, syslog, host))
-    lines.extend(extra_lines_for("disk_full", stamp, syslog, host))
+    lines.extend(extra_lines_for("auth_failures", stamp, syslog, host)[:3])
+    lines.extend(extra_lines_for("disk_full", stamp, syslog, host)[:1])
     lines.append(f"{stamp} INFO [batch] guardian demo log finished")
+    return lines
+
+
+def healthy_common_lines(host: str, stamp: str, syslog: str) -> list[str]:
+    lines = [
+        f"{stamp} INFO [api] Guardian healthy log started",
+        f"{stamp} INFO [api] health check ok",
+    ]
+    for idx in range(12):
+        lines.append(f"{stamp} INFO [api] request accepted path=/orders/{8900 + idx} status=200")
+    lines.extend(healthy_lines_for("auth_failures", stamp, syslog, host))
+    lines.extend(healthy_lines_for("disk_full", stamp, syslog, host))
+    lines.append(f"{stamp} DEBUG [cache] hit key=session:healthy")
+    lines.append(f"{stamp} INFO [batch] guardian healthy log finished")
     return lines
 
 
@@ -172,27 +305,34 @@ def write_demo_logs(base: Path | None = None, when: datetime | None = None) -> l
         written.append(path)
 
     all_lines = common_lines("demo-local", stamp, syslog)
+    healthy_all = healthy_common_lines("healthy-local", stamp, syslog)
     for name in CATALOG:
-        extra = extra_lines_for(name, stamp, syslog, name)
-        dump(root / "catalog" / f"{name}.log", extra)
-        all_lines.extend(extra)
+        mixed = catalog_lines_for(name, stamp, syslog, name)
+        healthy = healthy_lines_for(name, stamp, syslog, name)
+        dump(root / "catalog" / f"{name}.log", mixed)
+        dump(root / "healthy" / f"{name}.log", healthy)
+        all_lines.extend(mixed)
+        healthy_all.extend(healthy)
     dump(root / "all-plugins.log", all_lines)
     dump(root / "demo.log", common_lines("demo-local", stamp, syslog))
+    dump(root / "healthy.log", healthy_all)
     dump(root / "README.txt", [
         "Guardian 시연용 샘플 로그",
         f"만든 날짜: {day}",
         "",
-        "all-plugins.log  모든 1단계 플러그인이 잡는 줄을 한 파일에 모았습니다.",
-        "catalog/*.log    플러그인별 파일입니다. 서버 등록 때 경로로 넣으면 됩니다.",
-        "demo.log         공통(ERROR 몰림, SSH 실패, 디스크 가득)만 있습니다.",
-        "web/ db/ auth/   날짜·시간별 더미 로그입니다. 대시보드 추이 시연용입니다.",
+        "healthy.log / healthy/*.log  정상 INFO·DEBUG 만 있습니다. 여유 서버 시연용입니다.",
+        "catalog/*.log               정상 줄 사이에 이상 줄을 섞었습니다.",
+        "all-plugins.log             정상+이상. 모든 1단계 플러그인이 잡는 줄이 들어 있습니다.",
+        "demo.log                    공통 정상 트래픽 + ERROR/WARN 일부입니다.",
+        "web/ db/ auth/              날짜·시간별 더미(정상 많음, 일부 시간대 이상).",
+        "healthy/web|db|auth/        날짜·시간별 정상 더미입니다.",
         "",
-        "시연 한 방에 보려면 로그 수집 대상 서버를 local 로 등록하고",
-        "로그 경로에 sample_logs/all-plugins.log 를 넣은 뒤",
-        "1단계 공통 플러그인을 모두 고르고 수집하면 됩니다.",
+        "이상 시연: catalog 또는 all-plugins.log 경로 + 1단계 플러그인 선택 후 수집.",
+        "정상 시연: healthy.log 또는 healthy/*.log 경로로 서버를 따로 등록 후 수집.",
     ])
     if root.resolve() == (ROOT / "sample_logs").resolve():
-        from app.seed import _write_dummy_logs
+        from app.seed import _write_dummy_logs, _write_healthy_dummy_logs
 
         _write_dummy_logs(force=True)
+        _write_healthy_dummy_logs(force=True)
     return written
