@@ -191,6 +191,10 @@ body {
     grid-template-columns: 1fr;
   }
 }
+#section-resources,
+#section-logs {
+  scroll-margin-top: 5.5rem;
+}
 .server-report-card {
   background: #fff;
   border: 1px solid #e6e8ee;
@@ -199,6 +203,7 @@ body {
   min-height: 11.5rem;
   display: flex;
   flex-direction: column;
+  scroll-margin-top: 5.5rem;
 }
 .server-report-card[role="button"] {
   cursor: pointer;
@@ -216,6 +221,285 @@ body {
 .server-report-card.danger {
   border-color: #fecdca;
   background: #fff8f7;
+}
+.overview-card {
+  border-radius: 16px;
+}
+.overview-card.warn {
+  border-color: #fedf89;
+  background: #fffcf5;
+}
+.overview-card.danger {
+  border-color: #fecdca;
+  background: #fff8f7;
+}
+.overview-card .tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+}
+.overview-card .tag.ok {
+  background: #ecfdf3;
+  color: #067647;
+}
+.overview-card .tag.warn {
+  background: #fffaeb;
+  color: #b54708;
+}
+.overview-card .tag.danger {
+  background: #fef3f2;
+  color: #b42318;
+}
+.overview-brief {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+@media (max-width: 768px) {
+  .overview-brief {
+    grid-template-columns: 1fr;
+  }
+}
+.overview-visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.overview-donut-wrap {
+  position: relative;
+  width: 168px;
+  height: 168px;
+}
+.overview-donut-wrap canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+.overview-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.overview-donut-center strong {
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.overview-donut-center span {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 650;
+  color: #667085;
+}
+.overview-legend {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: #4b5563;
+}
+.overview-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.overview-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: #d0d5dd;
+  flex: none;
+}
+.overview-dot.danger { background: #e81500; }
+.overview-dot.warn { background: #f4a100; }
+.overview-dot.ok { background: #00ac69; }
+.overview-stacks {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.overview-stack {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.overview-stack:hover .overview-stack-bar {
+  box-shadow: 0 0 0 3px rgba(0, 97, 242, 0.12);
+}
+.overview-stack:hover .overview-stack-head span:first-child {
+  color: #0061f2;
+}
+.overview-stack-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 650;
+  color: #667085;
+  margin-bottom: 4px;
+}
+.overview-stack-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: #eef1f4;
+}
+.overview-seg.danger { background: #e81500; }
+.overview-seg.warn { background: #f4a100; }
+.overview-seg.ok { background: #00ac69; }
+.overview-seg.waiting { background: #d0d5dd; }
+.overview-headline {
+  font-size: 1.22rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  margin-bottom: 12px;
+  line-height: 1.35;
+}
+.overview-ai {
+  border: 1px solid #e6e8ee;
+  border-radius: 12px;
+  padding: 12px 14px 14px;
+  background: #fff;
+}
+.overview-ai-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #4b5563;
+}
+.overview-ai-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.overview-ai-at {
+  font-size: 11px;
+  font-weight: 500;
+  color: #98a2b3;
+}
+.overview-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: none;
+  color: #69707a;
+  cursor: pointer;
+}
+.overview-refresh:hover,
+.overview-refresh:focus-visible {
+  color: #363d47;
+  background: #eef2f6;
+  outline: none;
+}
+.overview-refresh .feather {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.overview-ai-body {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: #1f2937;
+}
+.overview-ai-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #98a2b3;
+}
+.overview-steps {
+  margin: 12px 0 0;
+  padding-left: 1.15rem;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #4b5563;
+}
+.overview-steps li + li {
+  margin-top: 4px;
+}
+.overview-focus-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.overview-focus {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  grid-template-areas: "kind name status" "detail detail detail";
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: baseline;
+  padding: 10px 12px 10px 12px;
+  border: 1px solid #e6e8ee;
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+}
+a.overview-focus:hover {
+  border-color: #0061f2;
+  box-shadow: 0 0 0 3px rgba(0, 97, 242, 0.08);
+}
+.overview-focus.danger {
+  border-left-color: #e81500;
+  background: #fff8f7;
+}
+.overview-focus.warn {
+  border-left-color: #f4a100;
+  background: #fffcf5;
+}
+.overview-focus-kind {
+  grid-area: kind;
+  font-size: 11px;
+  font-weight: 650;
+  color: #98a2b3;
+}
+.overview-focus strong {
+  grid-area: name;
+  font-size: 13px;
+}
+.overview-focus-status {
+  grid-area: status;
+  justify-self: end;
+  font-size: 11px;
+  font-weight: 650;
+  color: #b42318;
+}
+.overview-focus.warn .overview-focus-status {
+  color: #b54708;
+}
+.overview-focus-detail {
+  grid-area: detail;
+  font-size: 12px;
+  color: #667085;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .server-report-card-head {
   display: flex;

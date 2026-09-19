@@ -17,6 +17,14 @@ def test_health_and_dashboard_and_pipeline():
         assert "guardian-brand" in home.text
         assert "Goodmorning" not in home.text
         assert "감시 현황" in home.text
+        assert "전체 현황" in home.text
+        assert "overview-headline" in home.text
+        assert "chartOverviewHealth" in home.text
+        assert "AI 전체 총평" in home.text
+        assert "전체 총평 다시 만들기" not in home.text
+        assert "전체 총평 만들기" not in home.text
+        assert 'href="#section-resources"' in home.text
+        assert 'href="#section-logs"' in home.text
         assert 'sidenav-menu-heading">감시' not in home.text
         assert "로컬 서비스" in home.text
         assert "testserver" in home.text
@@ -48,6 +56,13 @@ def test_health_and_dashboard_and_pipeline():
         assert 'data-kind="log"' in home_after.text
         assert "ERROR" in home_after.text
         assert "징후" in home_after.text
+        assert "전체 현황" in home_after.text
+        assert "위험" in home_after.text
+        assert 'id="card-log-' in home_after.text or 'id="card-resource-' in home_after.text
+        assert "#card-log-" in home_after.text or "#section-logs" in home_after.text
+        reviewed = client.post("/overview/review", follow_redirects=True)
+        assert reviewed.status_code == 200
+        assert "전체 현황" in reviewed.text
         assert "finding-table-dash" in home_after.text
         assert "finding-signature" in home_after.text
 

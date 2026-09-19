@@ -24,6 +24,8 @@ from app.models import CollectRun, Finding, Report, Server, init_db
 from app.charts import chart_summary
 from app.cursors import PAGE_SIZE, migrate_from_db, page_cursors
 from app.pipeline.reports import generate_reports, group_log_report_rows
+from app.overview import build_overview, review_payload, save_overview_review
+from app.ai.gateway import review_fleet
 from app.resources import (
     SAMPLE_JSON,
     delete_snapshot,
@@ -264,6 +266,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     log_attention = sum(
         1 for row in log_report_groups if (row.get("metrics") or {}).get("level") in {"warn", "danger"}
     )
+    overview = build_overview(log_report_groups, report_groups)
     counts = {
         "servers": len(servers),
         "resource_servers": len(resource_servers),
@@ -287,8 +290,30 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             counts=counts,
             report_groups=report_groups,
             log_report_groups=log_report_groups,
+            overview=overview,
         ),
     )
+
+
+@app.post("/overview/review")
+def overview_review(db: Session = Depends(get_db)):
+    servers = db.query(Server).order_by(Server.name).all()
+    reports = db.query(Report).order_by(Report.created_at.desc()).all()
+    resource_reports = [item for item in reports if is_resource_plugin(item.plugin)]
+    log_reports = [item for item in reports if not is_resource_plugin(item.plugin)]
+    resource_servers = _resource_servers(db)
+    report_groups = group_resource_report_rows(
+        resource_reports,
+        registered=[server.name for server in resource_servers],
+        snapshot_names=snapshot_server_names(),
+        server_ids={server.name: server.id for server in servers},
+    )
+    log_groups = group_log_report_rows(log_reports, _log_servers(db), db.query(Finding).all())
+    overview = build_overview(log_groups, report_groups)
+    review = review_fleet(review_payload(overview))
+    if review.get("summary") or review.get("risks") or review.get("actions"):
+        save_overview_review(review)
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/servers")
