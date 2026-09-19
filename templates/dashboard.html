@@ -98,9 +98,9 @@
             </div>
           </div>
           {% if overview.ai.summary %}
-          <p class="overview-ai-body">{{ overview.ai.summary }}</p>
+          <p class="overview-ai-body js-overview-mark">{{ overview.ai.summary }}</p>
           {% else %}
-          <p class="overview-ai-body">{{ overview.briefing }}</p>
+          <p class="overview-ai-body js-overview-mark">{{ overview.briefing }}</p>
           {% if openai_enabled or dify_enabled %}
           <p class="overview-ai-hint">새로고침을 누르면 전체를 한 이야기로 브리핑합니다.</p>
           {% else %}
@@ -111,7 +111,7 @@
           {% if steps %}
           <ol class="overview-steps">
             {% for item in steps %}
-            <li>{{ item }}</li>
+            <li class="js-overview-mark">{{ item }}</li>
             {% endfor %}
           </ol>
           {% endif %}
@@ -135,6 +135,7 @@
       </div>
     </div>
     <script type="application/json" id="overviewChartData">{{ overview.charts_json | safe }}</script>
+    <script type="application/json" id="overviewServerNames">{{ overview.server_names_json | default('[]') | safe }}</script>
   </div>
 </div>
 <div class="row">
@@ -393,7 +394,7 @@
 {% endblock %}
 {% block scripts %}
 <script src="/static/vendor/Chart.min.js"></script>
-<script src="/static/js/guardian-overview.js?v=overview-brief-2"></script>
+<script src="/static/js/guardian-overview.js?v=overview-flash-2"></script>
 <script src="/static/js/guardian-charts.js?v=trend-info-1"></script>
 <script src="/static/js/guardian-resource-reports.js?v=report-export-1"></script>
 {% endblock %}

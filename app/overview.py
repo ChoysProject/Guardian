@@ -56,6 +56,7 @@ def build_overview(log_groups: list[dict], resource_groups: list[dict]) -> dict[
         "facts": facts,
         "charts": charts,
         "charts_json": json.dumps(charts, ensure_ascii=False).replace("</", "<\\/"),
+        "server_names_json": json.dumps(_server_names(log_rows, res_rows), ensure_ascii=False).replace("</", "<\\/"),
         "ai": load_overview_review(),
     }
 
@@ -228,6 +229,18 @@ def _risks(facts: dict[str, Any]) -> list[str]:
         detail = item.get("detail") or "상태 이상"
         lines.append(f"{item['server']} 리소스 · {detail}")
     return lines[:4]
+
+
+def _server_names(log_rows: list[dict], res_rows: list[dict]) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for row in res_rows + log_rows:
+        name = str(row.get("name") or "").strip()
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+    names.sort(key=len, reverse=True)
+    return names
 
 
 def _worse(left: str, right: str) -> str:

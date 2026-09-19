@@ -180,6 +180,7 @@ body {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+  overflow: visible;
 }
 @media (max-width: 1200px) {
   .server-report-grid {
@@ -213,6 +214,81 @@ body {
   border-color: #0061f2;
   box-shadow: 0 0 0 3px rgba(0, 97, 242, 0.12);
   outline: none;
+}
+.server-report-card.is-flash {
+  position: relative;
+  z-index: 3;
+  animation: overview-flash-card 2s cubic-bezier(0.22, 0.8, 0.32, 1);
+}
+.server-report-card.is-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: overview-flash-wash 2s ease;
+}
+#section-resources.is-flash,
+#section-logs.is-flash {
+  position: relative;
+  z-index: 2;
+  border-radius: 16px;
+  animation: overview-flash-section 2s ease;
+}
+@keyframes overview-flash-card {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: none;
+  }
+  14% {
+    transform: scale(1.03);
+    box-shadow:
+      0 0 0 3px #0061f2,
+      0 0 0 11px rgba(0, 97, 242, 0.32),
+      0 14px 32px rgba(0, 97, 242, 0.28);
+  }
+  34% {
+    transform: scale(1.008);
+    box-shadow:
+      0 0 0 2px rgba(0, 97, 242, 0.7),
+      0 0 0 6px rgba(0, 97, 242, 0.14);
+  }
+  52% {
+    transform: scale(1.024);
+    box-shadow:
+      0 0 0 3px #0061f2,
+      0 0 0 10px rgba(0, 97, 242, 0.24),
+      0 12px 28px rgba(0, 97, 242, 0.2);
+  }
+  78% {
+    transform: scale(1);
+    box-shadow:
+      0 0 0 2px rgba(0, 97, 242, 0.35),
+      0 0 0 5px rgba(0, 97, 242, 0.08);
+  }
+}
+@keyframes overview-flash-wash {
+  0%,
+  100% {
+    background: transparent;
+  }
+  14%,
+  52% {
+    background: rgba(0, 97, 242, 0.12);
+  }
+}
+@keyframes overview-flash-section {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  14%,
+  52% {
+    box-shadow:
+      0 0 0 3px #0061f2,
+      0 0 0 10px rgba(0, 97, 242, 0.22);
+  }
 }
 .server-report-card.warn {
   border-color: #fedf89;
@@ -421,9 +497,16 @@ body {
 }
 .overview-ai-body {
   margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.7;
+  font-family: "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  font-size: 0.97rem;
+  font-weight: 400;
+  line-height: 1.75;
+  letter-spacing: -0.01em;
   color: #1f2937;
+}
+.overview-server {
+  color: #0842a0;
+  font-weight: 700;
 }
 .overview-ai-hint {
   margin: 8px 0 0;
