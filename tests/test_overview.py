@@ -1,3 +1,5 @@
+import json
+
 from app.overview import build_overview, review_payload, save_overview_review, load_overview_review
 
 
@@ -45,6 +47,11 @@ def test_overview_danger_joins_log_and_resource():
     )
     assert linked["focus"][0]["href"] == "#card-resource-9"
     assert linked["focus"][1]["href"] == "#card-log-3"
+    named = build_overview(
+        [_group("EAI_LOG", "danger", "위험")],
+        [_group("EAI", "danger", "위험")],
+    )
+    assert json.loads(named["server_names_json"]) == ["EAI_LOG", "EAI"]
     assert "리소스는 pg-db-01" in overview["briefing"]
     assert any("spring-prod-01" in item for item in overview["risks"])
     payload = review_payload(overview)

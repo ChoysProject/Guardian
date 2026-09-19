@@ -25,6 +25,8 @@ def test_health_and_dashboard_and_pipeline():
         assert "전체 총평 만들기" not in home.text
         assert 'href="#section-resources"' in home.text
         assert 'href="#section-logs"' in home.text
+        assert "overviewServerNames" in home.text
+        assert "js-overview-mark" in home.text
         assert 'sidenav-menu-heading">감시' not in home.text
         assert "로컬 서비스" in home.text
         assert "testserver" in home.text
