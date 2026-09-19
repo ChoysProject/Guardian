@@ -11,6 +11,7 @@
   {% set metrics = group.metrics or {} %}
   <article
     class="server-report-card {{ metrics.level or '' }}"
+    id="card-{{ card_kind }}-{{ group.server_id if group.server_id else group.name }}"
     data-kind="{{ card_kind }}"
     data-server="{{ group.name | e }}"
     data-reports="{{ group.reports_json | e }}"

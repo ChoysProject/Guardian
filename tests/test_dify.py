@@ -1,5 +1,5 @@
 from app.ai.dify import _extract_comments, findings_payload
-from app.ai.gateway import annotate_findings, review_logs, review_resources
+from app.ai.gateway import annotate_findings, review_fleet, review_logs, review_resources
 from app.config import settings
 
 
@@ -129,3 +129,32 @@ def test_review_logs_uses_dify_facts(monkeypatch):
     assert seen["payload"]["task"] == "log_review"
     assert seen["payload"]["facts"]["lines"] == 40
     assert review["summary"] == "ERROR 2건입니다."
+
+
+def test_review_fleet_disabled_keeps_rule_results():
+    assert review_fleet({"kind": "fleet", "facts": {"headline": "위험 서버 1대입니다."}}) == {}
+
+
+def test_review_fleet_uses_dify_facts(monkeypatch):
+    monkeypatch.setattr("app.ai.gateway.settings.openai.enabled", False)
+    monkeypatch.setattr("app.ai.gateway.settings.dify.enabled", True)
+    seen = {}
+
+    def fake_dify(payload):
+        seen["payload"] = payload
+        return ['{"summary": "웹과 DB가 같이 위험합니다.", "risks": ["spring-prod-01"], "actions": ["DB를 보세요"]}']
+
+    monkeypatch.setattr("app.ai.gateway._call_dify", fake_dify)
+    review = review_fleet(
+        {
+            "kind": "fleet",
+            "facts": {
+                "headline": "위험 서버 2대입니다.",
+                "log_danger": ["spring-prod-01"],
+                "resource_danger": ["pg-db-01"],
+            },
+        }
+    )
+    assert seen["payload"]["task"] == "fleet_review"
+    assert seen["payload"]["facts"]["log_danger"] == ["spring-prod-01"]
+    assert review["summary"] == "웹과 DB가 같이 위험합니다."

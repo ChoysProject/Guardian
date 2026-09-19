@@ -64,6 +64,28 @@ def review_logs(payload: dict[str, Any]) -> dict[str, Any]:
     return _review_payload(payload, LOG_SYSTEM, "AI 로그 총평 실패", openai_fn=_call_openai_logs)
 
 
+FLEET_SYSTEM = (
+    "여러 서버의 로그 징후와 리소스 상태를 운영 브리핑처럼 한국어로 말한다. "
+    "앞에 앉아 있는 사람에게 지금 어디를 봐야 하는지 짧게 설명한다. "
+    "facts 에 있는 서버 이름·상태·문제 문구·건수만 사용한다. 없는 원인과 없는 수치는 만들지 않는다. "
+    "CPU 0%나 메모리 40%처럼 여유 숫자를 위험이라고 하지 않는다. 문제 문구에 나온 디스크·인스턴스·에러만 말한다. "
+    "마크다운과 영어 서두를 쓰지 않는다. "
+    '출력은 {"summary": "...", "risks": ["..."], "actions": ["..."]} JSON 객체만 낸다. '
+    "summary 는 두세 문장으로 이어 쓰는 브리핑이다. 목록처럼 나열하지 않는다. "
+    "첫 문장은 전체 온도, 둘째는 로그와 리소스가 어떻게 겹치는지, 셋째는 바로 볼 서버다. "
+    "risks 와 actions 는 각각 최대 3개. 위험 없으면 빈 배열. actions 는 '~하세요' 대신 '~를 연다'처럼 짧게."
+)
+
+
+def review_fleet(payload: dict[str, Any]) -> dict[str, Any]:
+    """전체 서버 요약을 LLM에 보내 한 번만 총평한다. 실패하면 규칙 결과만 남긴다."""
+    return _review_payload(payload, FLEET_SYSTEM, "AI 전체 총평 실패", openai_fn=_call_openai_fleet)
+
+
+def _call_openai_fleet(payload: dict[str, Any]) -> dict[str, Any]:
+    return _call_openai_review(payload, FLEET_SYSTEM)
+
+
 def _review_payload(
     payload: dict[str, Any],
     system: str,
@@ -126,6 +148,12 @@ def _call_openai_review(payload: dict[str, Any], system: str) -> dict[str, Any]:
 
 
 def _dify_review_input(payload: dict[str, Any], system: str = RESOURCE_SYSTEM) -> dict[str, Any]:
+    if payload.get("kind") == "fleet":
+        return {
+            "task": "fleet_review",
+            "instruction": system,
+            "facts": payload.get("facts") if isinstance(payload.get("facts"), dict) else payload,
+        }
     findings = payload.get("findings")
     if findings is not None:
         stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}

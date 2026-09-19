@@ -11,7 +11,7 @@
           <h1 class="page-header-title">
             감시 현황
           </h1>
-          <div class="page-header-subtitle">로그 이상징후와 서버 리소스 상태</div>
+          <div class="page-header-subtitle">등록한 서버를 한 판으로 본 로그 징후와 리소스 상태</div>
         </div>
       </div>
     </div>
@@ -20,6 +20,123 @@
 {% endblock %}
 {% block content_wrap_class %}mt-n10{% endblock %}
 {% block content %}
+<div class="card mb-4 overview-card {{ overview.level or '' }}">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <span>전체 현황</span>
+    <span class="tag {{ overview.level or 'ok' }}">{{ overview.status }}</span>
+  </div>
+  <div class="card-body">
+    <div class="overview-brief">
+      <div class="overview-visual">
+        <div class="overview-donut-wrap">
+          <canvas id="chartOverviewHealth"></canvas>
+          <div class="overview-donut-center">
+            {% if overview.level == 'danger' %}
+            <strong>{{ overview.charts.health.danger }}</strong>
+            <span>위험</span>
+            {% elif overview.level == 'warn' %}
+            <strong>{{ overview.charts.health.warn }}</strong>
+            <span>주의</span>
+            {% elif overview.level == 'ok' %}
+            <strong>{{ overview.charts.health.ok }}</strong>
+            <span>여유</span>
+            {% else %}
+            <strong>{{ overview.charts.health.waiting or 0 }}</strong>
+            <span>대기</span>
+            {% endif %}
+          </div>
+        </div>
+        <ul class="overview-legend">
+          <li><i class="overview-dot danger"></i>위험 {{ overview.charts.health.danger }}</li>
+          <li><i class="overview-dot warn"></i>주의 {{ overview.charts.health.warn }}</li>
+          <li><i class="overview-dot ok"></i>여유 {{ overview.charts.health.ok }}</li>
+          <li><i class="overview-dot waiting"></i>대기 {{ overview.charts.health.waiting }}</li>
+        </ul>
+        <div class="overview-stacks">
+          <a class="overview-stack" href="#section-resources">
+            <div class="overview-stack-head">
+              <span>리소스</span>
+              <span>{{ overview.charts.resource.total }}대</span>
+            </div>
+            <div class="overview-stack-bar" aria-hidden="true">
+              {% for seg in overview.charts.resource.segs %}
+              <span class="overview-seg {{ seg.key }}" style="width: {{ seg.pct }}%"></span>
+              {% else %}
+              <span class="overview-seg waiting" style="width: 100%"></span>
+              {% endfor %}
+            </div>
+          </a>
+          <a class="overview-stack" href="#section-logs">
+            <div class="overview-stack-head">
+              <span>로그</span>
+              <span>{{ overview.charts.log.total }}대</span>
+            </div>
+            <div class="overview-stack-bar" aria-hidden="true">
+              {% for seg in overview.charts.log.segs %}
+              <span class="overview-seg {{ seg.key }}" style="width: {{ seg.pct }}%"></span>
+              {% else %}
+              <span class="overview-seg waiting" style="width: 100%"></span>
+              {% endfor %}
+            </div>
+          </a>
+        </div>
+      </div>
+      <div class="overview-copy">
+        <p class="overview-headline">{{ overview.headline }}</p>
+        <div class="overview-ai">
+          <div class="overview-ai-head">
+            <span>AI 전체 총평</span>
+            <div class="overview-ai-tools">
+              {% if overview.ai.at %}<span class="overview-ai-at">{{ overview.ai.at }}</span>{% endif %}
+              {% if openai_enabled or dify_enabled %}
+              <form class="js-fidget mb-0" data-fidget="overview" method="post" action="/overview/review">
+                <button class="overview-refresh" type="submit" title="새로고침" aria-label="새로고침">
+                  <i data-feather="refresh-cw"></i>
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          </div>
+          {% if overview.ai.summary %}
+          <p class="overview-ai-body">{{ overview.ai.summary }}</p>
+          {% else %}
+          <p class="overview-ai-body">{{ overview.briefing }}</p>
+          {% if openai_enabled or dify_enabled %}
+          <p class="overview-ai-hint">새로고침을 누르면 전체를 한 이야기로 브리핑합니다.</p>
+          {% else %}
+          <p class="overview-ai-hint">AI가 꺼져 있어 규칙 브리핑만 보입니다.</p>
+          {% endif %}
+          {% endif %}
+          {% set steps = overview.ai.actions if overview.ai and overview.ai.actions else overview.actions %}
+          {% if steps %}
+          <ol class="overview-steps">
+            {% for item in steps %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ol>
+          {% endif %}
+        </div>
+        {% if overview.focus %}
+        <div class="overview-focus-list">
+          {% for item in overview.focus %}
+          {% if item.href %}
+          <a class="overview-focus {{ item.level }}" href="{{ item.href }}">
+          {% else %}
+          <div class="overview-focus {{ item.level }}">
+          {% endif %}
+            <span class="overview-focus-kind">{{ item.kind }}</span>
+            <strong>{{ item.server }}</strong>
+            <span class="overview-focus-status">{{ item.status }}</span>
+            {% if item.detail %}<span class="overview-focus-detail">{{ item.detail }}</span>{% endif %}
+          {% if item.href %}</a>{% else %}</div>{% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    <script type="application/json" id="overviewChartData">{{ overview.charts_json | safe }}</script>
+  </div>
+</div>
 <div class="row">
   <div class="col-lg-6 col-xl-3 mb-4">
     <div class="card bg-primary text-white h-100">
@@ -91,7 +208,7 @@
   </div>
 </div>
 
-<div class="card mb-4">
+<div class="card mb-4" id="section-resources">
   <div class="card-header d-flex align-items-center justify-content-between">
     <span>리소스 및 성능</span>
     <a class="small" href="/reports/resources">보고서 화면</a>
@@ -105,7 +222,7 @@
   </div>
 </div>
 
-<div class="card mb-4">
+<div class="card mb-4" id="section-logs">
   <div class="card-header d-flex align-items-center justify-content-between">
     <span>로그분석</span>
     <a class="small" href="/reports">보고서 화면</a>
@@ -276,6 +393,7 @@
 {% endblock %}
 {% block scripts %}
 <script src="/static/vendor/Chart.min.js"></script>
+<script src="/static/js/guardian-overview.js?v=overview-brief-2"></script>
 <script src="/static/js/guardian-charts.js?v=trend-info-1"></script>
 <script src="/static/js/guardian-resource-reports.js?v=report-export-1"></script>
 {% endblock %}
