@@ -1181,7 +1181,32 @@ def collect_one(server_id: int, db: Session = Depends(get_db)):
 @app.post("/collect")
 def collect_all(db: Session = Depends(get_db)):
     collect_and_analyze(db)
+    for server in _resource_servers(db):
+        if not server.enabled:
+            continue
+        try:
+            collect_server(db, server)
+        except Exception as exc:  # noqa: BLE001 — 로그 수집은 이미 끝났고, 리소스 실패는 해당 서버에만 남긴다
+            logging.getLogger("guardian.collect").warning("%s 리소스 수집 실패: %s", server.name, exc)
     return RedirectResponse("/", status_code=303)
+
+
+@app.post("/servers/logs/collect-all")
+def collect_all_logs(db: Session = Depends(get_db)):
+    collect_and_analyze(db)
+    return RedirectResponse("/servers/logs#collecting", status_code=303)
+
+
+@app.post("/servers/resources/collect-all")
+def collect_all_resources(db: Session = Depends(get_db)):
+    for server in _resource_servers(db):
+        if not server.enabled:
+            continue
+        try:
+            collect_server(db, server)
+        except Exception as extra:  # noqa: BLE001 — 한 대 실패해도 나머지는 계속 모은다
+            logging.getLogger("guardian.collect").warning("%s 리소스 수집 실패: %s", server.name, extra)
+    return RedirectResponse("/servers/resources#collecting", status_code=303)
 
 
 @app.get("/findings", response_class=HTMLResponse)

@@ -18,6 +18,8 @@ def test_health_and_dashboard_and_pipeline():
         assert "Goodmorning" not in home.text
         assert "감시 현황" in home.text
         assert "전체 현황" in home.text
+        assert "전체 수집" not in home.text
+        assert "전체 보고서" not in home.text
         assert "overview-headline" in home.text
         assert "chartOverviewHealth" in home.text
         assert "AI 전체 총평" in home.text
@@ -117,6 +119,8 @@ def test_health_and_dashboard_and_pipeline():
         assert reports_page.status_code == 200
         assert "demo-local" in reports_page.text
         assert "보고서 생성" in reports_page.text
+        assert "전체 보고서" in reports_page.text
+        assert 'action="/reports/generate"' in reports_page.text
         assert "박스를 누르면" in reports_page.text
         assert "오늘 보고서 생성" not in reports_page.text
         assert "선택 생성" not in reports_page.text
@@ -248,6 +252,12 @@ def test_health_and_dashboard_and_pipeline():
         assert 'id="server-search"' in servers_page.text
         assert "server-add-actions" in servers_page.text
         assert 'data-fidget="log-collect"' in servers_page.text
+        assert "전체 수집" in servers_page.text
+        assert 'action="/servers/logs/collect-all"' in servers_page.text
+        assert "지금 수집" not in servers_page.text
+        all_logs = client.post("/servers/logs/collect-all", follow_redirects=False)
+        assert all_logs.status_code == 303
+        assert "/servers/logs" in all_logs.headers["location"]
         assert "1단계 공통 플러그인" in servers_page.text
         assert "2단계 세부 플러그인" in servers_page.text
         assert "2단계 우리 시스템" not in servers_page.text

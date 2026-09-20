@@ -164,6 +164,25 @@ def test_log_card_shows_missing_log_files():
     assert "springboot" in metrics["problem_text"]
 
 
+def test_log_card_metrics_ok_shows_info_traffic():
+    server = Server(name="pg-ok-01", last_collect_at=datetime.utcnow())
+    findings = [
+        Finding(severity="info", count=84, signature="checkpoint complete"),
+        Finding(severity="debug", count=40, signature="connection authorized"),
+    ]
+    from app.pipeline.reports import _log_card_metrics
+
+    metrics = _log_card_metrics(server, findings)
+    assert metrics["status"] == "여유"
+    assert metrics["level"] == "ok"
+    assert "정상 로그 124건" in metrics["verdict"]
+    assert "정상 트래픽 124건" in metrics["problem_text"]
+    labels = {cell["label"]: cell["value"] for cell in metrics["cells"]}
+    assert labels["ERROR"] == "0"
+    assert labels["WARN"] == "0"
+    assert labels["INFO"] == "124"
+
+
 def test_cursor_files_ignore_leftover_names():
     from app.cursors import load_all, save_all
     from app.pipeline.reports import _cursor_files

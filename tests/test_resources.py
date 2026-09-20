@@ -351,6 +351,7 @@ def test_resource_server_register_edit_delete():
         assert "connection-status is-off" in created.text
         assert ">disconnection<" in created.text
         assert 'data-fidget="resource-collect"' in created.text
+        assert "지금 수집" not in created.text
         # 비밀번호는 화면에 다시 나오지 않는다
         assert "s3cret" not in created.text
 
@@ -930,6 +931,11 @@ def test_resource_upload_and_weekly_report(monkeypatch):
 
         listed = client.get("/servers/resources")
         assert "demo-local" in listed.text
+        assert "전체 수집" in listed.text
+        assert 'action="/servers/resources/collect-all"' in listed.text
+        all_resources = client.post("/servers/resources/collect-all", follow_redirects=False)
+        assert all_resources.status_code == 303
+        assert "/servers/resources" in all_resources.headers["location"]
 
         analysis = analyze_server("demo-local", days=7, end="2026-09-01")
         assert analysis["count"] == 7
@@ -940,6 +946,8 @@ def test_resource_upload_and_weekly_report(monkeypatch):
         assert reports.status_code == 200
         assert 'id="reportFidget"' in reports.text
         assert "js-report-generate" in reports.text
+        assert "전체 보고서" in reports.text
+        assert 'action="/reports/resources/generate"' in reports.text
         assert "guardian-report-fidget.js" in reports.text
         generated = client.post(
             "/reports/resources/generate",

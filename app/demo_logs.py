@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -232,6 +232,35 @@ def extra_lines_for(plugin: str, stamp: str, syslog: str, host: str) -> list[str
         ],
     }
     return list(lines.get(name, []))
+
+
+def write_healthy_dated_logs(base: Path | None = None, days: int = 7, when: datetime | None = None) -> list[Path]:
+    """여유 시연용으로 날짜별 정상 로그를 채운다."""
+    root = Path(base or (ROOT / "sample_logs" / "healthy"))
+    now = when or wall_now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=ZoneInfo(settings.app.timezone))
+    now = now.replace(minute=0, second=0, microsecond=0)
+    plugins = ("springboot", "python", "postgres", "redis", "mysql", "nginx")
+    written: list[Path] = []
+    for name in plugins:
+        for day_offset in range(days - 1, -1, -1):
+            day = (now - timedelta(days=day_offset)).date()
+            path = root / name / f"{day.isoformat()}.log"
+            lines: list[str] = []
+            last_hour = now.hour if day_offset == 0 else 23
+            last_stamp = ""
+            for hour in range(last_hour + 1):
+                stamp_dt = datetime(day.year, day.month, day.day, hour, tzinfo=now.tzinfo)
+                stamp, syslog, _day = _stamp_parts(stamp_dt)
+                last_stamp = stamp
+                lines.extend(healthy_lines_for(name, stamp, syslog, name))
+            if last_stamp:
+                lines.extend([f"{last_stamp} INFO [health] check ok"] * 24)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            written.append(path)
+    return written
 
 
 def _stamp_parts(when: datetime | None = None) -> tuple[str, str, str]:
