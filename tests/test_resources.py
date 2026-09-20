@@ -931,7 +931,7 @@ def test_resource_upload_and_weekly_report(monkeypatch):
 
         listed = client.get("/servers/resources")
         assert "demo-local" in listed.text
-        assert "전체 수집" in listed.text
+        assert "전체 수집하기" in listed.text
         assert 'action="/servers/resources/collect-all"' in listed.text
         all_resources = client.post("/servers/resources/collect-all", follow_redirects=False)
         assert all_resources.status_code == 303
@@ -946,7 +946,7 @@ def test_resource_upload_and_weekly_report(monkeypatch):
         assert reports.status_code == 200
         assert 'id="reportFidget"' in reports.text
         assert "js-report-generate" in reports.text
-        assert "전체 보고서" in reports.text
+        assert "전체 보고서 생성" in reports.text
         assert 'action="/reports/resources/generate"' in reports.text
         assert "guardian-report-fidget.js" in reports.text
         generated = client.post(

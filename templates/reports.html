@@ -1,17 +1,15 @@
 {% extends "base.html" %}
 {% set title = "로그 분석 보고서" %}
 {% set heading = "로그 분석 보고서" %}
-{% block actions %}
-<form class="js-fidget mb-0" data-fidget="report" method="post" action="/reports/generate">
-  <button class="btn btn-primary" type="submit">전체 보고서</button>
-</form>
-{% endblock %}
 {% block content %}
 <div class="d-flex align-items-center justify-content-between gap-3 mb-3 report-toolbar">
   <p class="text-muted small mb-0">
     수집 서버별로 ERROR · WARN · INFO를 먼저 봅니다. 박스를 누르면 보고서 목록이 열리고, 목록에서 고르면 상세를 봅니다.
     {% if openai_enabled or dify_enabled %}<span class="fw-semibold">보고서를 만들 때 AI 총평이 한 번 붙습니다.</span>{% else %}<span class="text-muted">AI는 꺼져 있어 규칙 요약만 나옵니다. 설정에서 OpenAI 또는 Dify를 켜면 총평이 생깁니다.</span>{% endif %}
   </p>
+  <form class="js-fidget mb-0" data-fidget="report" method="post" action="/reports/generate">
+    <button class="btn btn-sm btn-primary text-nowrap" type="submit">전체 보고서 생성</button>
+  </form>
 </div>
 {% set report_generate_action = "/reports/generate" %}
 {% set server_edit_base = "/servers/logs" %}

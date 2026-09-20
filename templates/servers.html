@@ -1,17 +1,12 @@
 {% extends "base.html" %}
 {% set title = "로그 수집 대상 서버" %}
 {% set heading = "로그 수집 대상 서버" %}
-{% block actions %}
-<form class="js-fidget mb-0" data-fidget="log-collect" method="post" action="/servers/logs/collect-all">
-  <button class="btn btn-primary" type="submit">전체 수집</button>
-</form>
-{% endblock %}
 {% block content %}
 
 <div class="card mb-4" id="collecting">
   <div class="card-header d-flex align-items-center justify-content-between gap-3">
     <span class="text-nowrap">등록한 서버</span>
-    <div class="flex-grow-1">
+    <div class="server-list-search">
       <input
         class="form-control form-control-sm"
         id="server-search"
@@ -23,6 +18,9 @@
     <button class="btn btn-sm btn-primary text-nowrap" type="button" data-bs-toggle="collapse" data-bs-target="#server-add" aria-expanded="{{ 'true' if open_add else 'false' }}" aria-controls="server-add">
       서버 등록하기
     </button>
+    <form class="js-fidget mb-0" data-fidget="log-collect" method="post" action="/servers/logs/collect-all">
+      <button class="btn btn-sm btn-primary text-nowrap" type="submit">전체 수집하기</button>
+    </form>
   </div>
   <div class="collapse {% if open_add %}show{% endif %}" id="server-add">
     <div class="card-body border-bottom">
