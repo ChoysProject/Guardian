@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% set title = "로그 수집 대상 서버" %}
 {% set heading = "로그 수집 대상 서버" %}
+{% block actions %}
+<form class="js-fidget mb-0" data-fidget="log-collect" method="post" action="/servers/logs/collect-all">
+  <button class="btn btn-primary" type="submit">전체 수집</button>
+</form>
+{% endblock %}
 {% block content %}
 
 <div class="card mb-4" id="collecting">

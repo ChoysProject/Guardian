@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% set title = "리소스 및 성능 수집 대상 서버" %}
 {% set heading = "리소스 및 성능 수집 대상 서버" %}
+{% block actions %}
+<form class="js-fidget mb-0" data-fidget="resource-collect" method="post" action="/servers/resources/collect-all">
+  <button class="btn btn-primary" type="submit">전체 수집</button>
+</form>
+{% endblock %}
 {% block content %}
 
 <div class="card mb-4" id="collecting">
@@ -147,7 +152,7 @@
             <td class="text-nowrap text-end">
               <div class="d-flex justify-content-end gap-1">
                 <form class="js-fidget" data-fidget="resource-collect" method="post" action="/servers/resources/{{ server.id }}/collect">
-                  <button class="btn btn-sm btn-primary" type="submit">지금 수집</button>
+                  <button class="btn btn-sm btn-primary" type="submit">수집</button>
                 </form>
                 <button
                   class="btn btn-sm btn-outline-secondary"

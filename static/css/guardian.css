@@ -9,6 +9,12 @@ body {
 .page-header-compact .page-header-content .page-header-title .page-header-icon {
   display: none;
 }
+.page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .table {
   font-size: 12px;
 }

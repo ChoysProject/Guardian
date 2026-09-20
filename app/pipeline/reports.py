@@ -250,12 +250,17 @@ def _log_card_metrics(server: Server, findings: list[Finding]) -> dict:
         return {}
     error_count = 0
     warn_count = 0
+    info_count = 0
     for item in findings:
         amount = item.count if item.count and item.count > 0 else 1
         if item.severity == "error":
             error_count += amount
         elif item.severity == "warn":
             warn_count += amount
+        elif item.severity == "info":
+            info_count += amount
+        elif item.severity == "debug":
+            info_count += amount
     if error_count:
         level, status = "danger", "위험"
     elif warn_count:
@@ -284,9 +289,11 @@ def _log_card_metrics(server: Server, findings: list[Finding]) -> dict:
     problem_text = " · ".join(problems)
     if extra:
         problem_text = f"{problem_text} 외 {extra}건" if problem_text else f"징후 {extra}건"
+    if not problem_text and info_count:
+        problem_text = f"정상 트래픽 {info_count}건"
     if server.last_error:
         problem_text = server.last_error if not problem_text else f"{problem_text} · {server.last_error}"
-    verdict = _log_verdict(error_count, warn_count, len(findings))
+    verdict = _log_verdict(error_count, warn_count, len(findings), info_count)
     if server.last_error and not error_count and not warn_count:
         verdict = server.last_error
     return {
@@ -298,16 +305,18 @@ def _log_card_metrics(server: Server, findings: list[Finding]) -> dict:
         "cells": [
             {"label": "ERROR", "value": str(error_count)},
             {"label": "WARN", "value": str(warn_count)},
-            {"label": "징후", "value": f"{len(findings)}건"},
+            {"label": "INFO", "value": str(info_count)},
         ],
     }
 
 
-def _log_verdict(error_count: int, warn_count: int, finding_count: int) -> str:
+def _log_verdict(error_count: int, warn_count: int, finding_count: int, info_count: int = 0) -> str:
     if error_count:
         return f"ERROR {error_count}건이 있어 바로 확인이 필요합니다."
     if warn_count:
         return f"WARN {warn_count}건이 있어 추이를 봐야 합니다."
+    if info_count:
+        return f"정상 로그 {info_count}건이 들어오고 있고 ERROR·WARN은 없습니다."
     if finding_count:
         return "징후는 있으나 ERROR·WARN은 없습니다."
     return "아직 징후가 없습니다."
