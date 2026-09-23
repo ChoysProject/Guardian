@@ -100,9 +100,8 @@ def generate_reports(
             rendered.append(result)
         for item in rendered:
             created.append(_store_report(db, item, start, end, stamp))
-    db.commit()
-    for report in created:
-        db.refresh(report)
+            db.commit()
+            db.refresh(created[-1])
     return created
 
 

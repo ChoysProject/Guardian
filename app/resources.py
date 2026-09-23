@@ -1187,9 +1187,8 @@ def generate_resource_reports(
         review = review_resources(resource_payload(analysis))
         rendered = render_resource_report(analysis, start=start, end=end, ai=review)
         created.append(_store_report(db, rendered, start_dt, end_dt, end))
-    db.commit()
-    for report in created:
-        db.refresh(report)
+        db.commit()
+        db.refresh(created[-1])
     return created
 
 

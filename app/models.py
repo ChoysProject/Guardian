@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, create_engine
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from app.config import settings
@@ -125,13 +125,24 @@ class CollectRun(Base):
 
 def _sqlite_connect_args(url: str) -> dict:
     if url.startswith("sqlite"):
-        return {"check_same_thread": False}
+        return {"check_same_thread": False, "timeout": 30}
     return {}
+
+
+def _configure_sqlite(dbapi_connection, _connection_record) -> None:
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 
 
 def make_engine(url: str | None = None):
     db_url = url or settings.database.url
-    return create_engine(db_url, future=True, connect_args=_sqlite_connect_args(db_url))
+    engine = create_engine(db_url, future=True, connect_args=_sqlite_connect_args(db_url))
+    if db_url.startswith("sqlite"):
+        event.listen(engine, "connect", _configure_sqlite)
+    return engine
 
 
 engine = make_engine()
