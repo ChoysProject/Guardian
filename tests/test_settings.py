@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from app.config import settings
 from app.main import app
+from app.models import engine
 
 
 def test_settings_runtime_update_and_validation():
@@ -34,3 +36,11 @@ def test_settings_runtime_update_and_validation():
         from app.config import update_runtime_settings
 
         update_runtime_settings(old_interval, old_time)
+
+
+def test_sqlite_waits_instead_of_locking_out():
+    with engine.connect() as conn:
+        mode = conn.execute(text("PRAGMA journal_mode")).scalar()
+        timeout = conn.execute(text("PRAGMA busy_timeout")).scalar()
+    assert str(mode).lower() == "wal"
+    assert int(timeout or 0) >= 30000

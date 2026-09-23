@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.auth import require_auth
@@ -1191,19 +1192,42 @@ def collect_all(db: Session = Depends(get_db)):
     return RedirectResponse("/", status_code=303)
 
 
+def _db_busy_redirect(path: str) -> RedirectResponse:
+    return RedirectResponse(
+        f"{path}?error={quote('다른 수집이 끝나기를 기다리다가 시간이 지났습니다. 잠시 후 다시 눌러 주세요.')}",
+        status_code=303,
+    )
+
+
 @app.post("/servers/logs/collect-all")
 def collect_all_logs(db: Session = Depends(get_db)):
-    collect_and_analyze(db)
+    try:
+        collect_and_analyze(db)
+    except OperationalError as exc:
+        if "locked" not in str(exc).lower():
+            raise
+        return _db_busy_redirect("/servers/logs#collecting")
     return RedirectResponse("/servers/logs#collecting", status_code=303)
 
 
 @app.post("/servers/resources/collect-all")
 def collect_all_resources(db: Session = Depends(get_db)):
-    for server in _resource_servers(db):
+    try:
+        servers = _resource_servers(db)
+    except OperationalError as exc:
+        if "locked" not in str(exc).lower():
+            raise
+        return _db_busy_redirect("/servers/resources#collecting")
+    for server in servers:
         if not server.enabled:
             continue
         try:
             collect_server(db, server)
+        except OperationalError as extra:
+            if "locked" not in str(extra).lower():
+                logging.getLogger("guardian.collect").warning("%s 리소스 수집 실패: %s", server.name, extra)
+            else:
+                return _db_busy_redirect("/servers/resources#collecting")
         except Exception as extra:  # noqa: BLE001 — 한 대 실패해도 나머지는 계속 모은다
             logging.getLogger("guardian.collect").warning("%s 리소스 수집 실패: %s", server.name, extra)
     return RedirectResponse("/servers/resources#collecting", status_code=303)
@@ -1367,7 +1391,12 @@ def reports_generate(
     servers: list[str] = Form(default=[]),
 ):
     names = [item for item in servers if item] if selecting else None
-    generate_reports(db, server_names=names)
+    try:
+        generate_reports(db, server_names=names)
+    except OperationalError as exc:
+        if "locked" not in str(exc).lower():
+            raise
+        return _db_busy_redirect("/reports")
     return RedirectResponse("/reports", status_code=303)
 
 
@@ -1406,7 +1435,12 @@ def reports_resources_generate(
     servers: list[str] = Form(default=[]),
 ):
     names = [item for item in servers if item] if selecting else None
-    generate_resource_reports(db, server_names=names, days=7)
+    try:
+        generate_resource_reports(db, server_names=names, days=7)
+    except OperationalError as exc:
+        if "locked" not in str(exc).lower():
+            raise
+        return _db_busy_redirect("/reports/resources")
     return RedirectResponse("/reports/resources", status_code=303)
 
 
