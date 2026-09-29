@@ -1267,6 +1267,60 @@ def test_create_resource_plugin_from_checked_modules():
             plugin_editor.delete_plugin(4, "mod_resource")
 
 
+def test_unused_resource_plugin_can_be_deleted():
+    script, _ = build_script(["cpu_usage"], plugin_name="unused_resource")
+    plugin_editor.create_resource_plugin(
+        "unused_resource",
+        description="아무도 안 쓰는 스크립트",
+        targets=["*"],
+        script=script,
+        config={"modules": ["cpu_usage"]},
+    )
+    try:
+        with TestClient(app) as client:
+            page = client.get("/plugins/resources")
+            assert "unused_resource" in page.text
+            resp = client.post("/plugins/4/unused_resource/delete", follow_redirects=True)
+            assert resp.status_code == 200
+            assert "지웠습니다" in resp.text
+        assert plugin_editor.plugin_folder(4, "unused_resource").exists() is False
+    finally:
+        if plugin_editor.plugin_folder(4, "unused_resource").exists():
+            plugin_editor.delete_plugin(4, "unused_resource")
+
+
+def test_used_resource_plugin_delete_is_blocked():
+    script, _ = build_script(["cpu_usage"], plugin_name="in_use_resource")
+    plugin_editor.create_resource_plugin(
+        "in_use_resource",
+        description="서버가 쓰는 스크립트",
+        targets=["*"],
+        script=script,
+        config={"modules": ["cpu_usage"]},
+    )
+    try:
+        with TestClient(app) as client:
+            client.post(
+                "/servers/resources/new",
+                data={
+                    "name": "in-use-server",
+                    "collector_type": "local",
+                    "auth_type": "agent",
+                    "plugins": "in_use_resource",
+                },
+                follow_redirects=True,
+            )
+            resp = client.post("/plugins/4/in_use_resource/delete", follow_redirects=True)
+            assert resp.status_code == 200
+            assert "사용 중인 플러그인은 지울 수 없습니다" in resp.text
+            with SessionLocal() as db:
+                server = db.query(Server).filter(Server.name == "in-use-server").one()
+                client.post(f"/servers/resources/{server.id}/delete", follow_redirects=True)
+        assert plugin_editor.plugin_folder(4, "in_use_resource").exists() is True
+    finally:
+        plugin_editor.delete_plugin(4, "in_use_resource")
+
+
 def test_download_zip_uses_collect_path():
     script, _ = build_script(["cpu_usage"], plugin_name="path_resource")
     plugin_editor.create_resource_plugin(
