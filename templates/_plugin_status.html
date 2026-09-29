@@ -1,4 +1,10 @@
-{% if not item.enabled %}
+{% if item.stage == 4 %}
+{% if item.name in used_plugins %}
+<span class="tag ok">ON</span>
+{% else %}
+<span class="tag">OFF</span>
+{% endif %}
+{% elif not item.enabled %}
 <span class="tag">OFF</span>
 {% elif item.name in used_plugins %}
 <span class="tag ok">ON</span>

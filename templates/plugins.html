@@ -77,6 +77,13 @@
         </div>
         <div class="server-report-card-actions">
           <a class="btn btn-sm btn-outline-primary" href="/plugins/{{ item.stage }}/{{ item.name }}">수정</a>
+          {% if item.name in used_plugins %}
+          <button class="btn btn-sm btn-outline-danger" type="button" disabled title="사용 중인 스크립트는 지울 수 없습니다. 서버에서 먼저 빼 주세요.">삭제</button>
+          {% else %}
+          <form method="post" action="/plugins/{{ item.stage }}/{{ item.name }}/delete" class="mb-0" data-confirm-title="스크립트 삭제" data-confirm="{{ item.name }} 스크립트를 지울까요? 되돌릴 수 없습니다." data-confirm-ok="삭제">
+            <button class="btn btn-sm btn-outline-danger" type="submit">삭제</button>
+          </form>
+          {% endif %}
         </div>
       </article>
       {% endfor %}

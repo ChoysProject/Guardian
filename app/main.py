@@ -1708,13 +1708,15 @@ def _plugins_page(request: Request, kind: str, **extra):
 
 
 @app.get("/plugins/resources", response_class=HTMLResponse)
-def plugins_resources_page(request: Request, notice: str = "", db: Session = Depends(get_db)):
-    return _plugins_page(request, "resources", notice=notice, db=db)
+def plugins_resources_page(request: Request, notice: str = "", error: str = "", db: Session = Depends(get_db)):
+    return _plugins_page(request, "resources", notice=notice, error=error, db=db)
 
 
 @app.get("/plugins/logs", response_class=HTMLResponse)
-def plugins_logs_page(request: Request, notice: str = "", stage: str = "", db: Session = Depends(get_db)):
-    return _plugins_page(request, "logs", notice=notice, list_stage=stage, db=db)
+def plugins_logs_page(
+    request: Request, notice: str = "", error: str = "", stage: str = "", db: Session = Depends(get_db)
+):
+    return _plugins_page(request, "logs", notice=notice, error=error, list_stage=stage, db=db)
 
 
 @app.get("/plugins/resource-plugins", response_class=HTMLResponse)
@@ -2066,6 +2068,22 @@ def plugin_save(
     if stage == 4:
         return RedirectResponse(f"/plugins/resources?notice={notice}", status_code=303)
     return RedirectResponse(f"/plugins/logs?notice={notice}&stage={stage}", status_code=303)
+
+
+@app.post("/plugins/{stage}/{name}/delete")
+def plugin_delete(stage: int, name: str, db: Session = Depends(get_db)):
+    back = "/plugins/resources" if stage == 4 else f"/plugins/logs?stage={stage}"
+    used = plugin_usage_names(db.query(Server).all())
+    if name in used:
+        error = quote("사용 중인 플러그인은 지울 수 없습니다. 서버에서 먼저 빼 주세요.")
+        return RedirectResponse(f"{back}{'&' if '?' in back else '?'}error={error}", status_code=303)
+    try:
+        plugin_editor.delete_plugin(stage, name)
+    except KeyError as exc:
+        error = quote(str(exc))
+        return RedirectResponse(f"{back}{'&' if '?' in back else '?'}error={error}", status_code=303)
+    notice = quote(f"{name} 플러그인을 지웠습니다.")
+    return RedirectResponse(f"{back}{'&' if '?' in back else '?'}notice={notice}", status_code=303)
 
 
 def _settings_view() -> dict:
