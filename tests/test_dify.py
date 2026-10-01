@@ -131,6 +131,49 @@ def test_review_logs_uses_dify_facts(monkeypatch):
     assert review["summary"] == "ERROR 2건입니다."
 
 
+def test_review_resources_strips_markdown_even_if_dify_ignores_instruction(monkeypatch):
+    monkeypatch.setattr("app.ai.gateway.settings.openai.enabled", False)
+    monkeypatch.setattr("app.ai.gateway.settings.dify.enabled", True)
+
+    def fake_dify(_payload):
+        return [
+            '{"summary": "**현재 9대의 서버가 위험 상태입니다.**\\n### 요약\\n'
+            "apache-web-02와 app-all-01이 주요 문제입니다.\", "
+            '"risks": ["- **PLANDO** 서버 디스크 위험"], "actions": ["`PLANDO`를 확인한다"]}'
+        ]
+
+    monkeypatch.setattr("app.ai.gateway._call_dify", fake_dify)
+    review = review_resources({"server": "eai", "cpu": {"last": 10}})
+    assert "*" not in review["summary"]
+    assert "#" not in review["summary"]
+    assert "\n" not in review["summary"]
+    assert "현재 9대의 서버가 위험 상태입니다." in review["summary"]
+    assert "apache-web-02와 app-all-01이 주요 문제입니다." in review["summary"]
+    assert review["risks"] == ["PLANDO 서버 디스크 위험"]
+    assert review["actions"] == ["PLANDO를 확인한다"]
+
+
+def test_review_fleet_strips_markdown_from_freeform_dify_report(monkeypatch):
+    monkeypatch.setattr("app.ai.gateway.settings.openai.enabled", False)
+    monkeypatch.setattr("app.ai.gateway.settings.dify.enabled", True)
+
+    def fake_dify(_payload):
+        # JSON 형식을 안 지키고 자유 서술형 마크다운 보고서를 그대로 뱉는 워크플로를 흉내낸다.
+        return [
+            "### 전체 현황\n"
+            "**현재 9대의 서버가 위험 상태입니다.** 로그와 리소스가 겹치는 서버는 다음과 같습니다.\n"
+            "- apache-web-02\n- app-all-01"
+        ]
+
+    monkeypatch.setattr("app.ai.gateway._call_dify", fake_dify)
+    review = review_fleet({"kind": "fleet", "facts": {"headline": "위험 서버 9대입니다."}})
+    assert "*" not in review["summary"]
+    assert "#" not in review["summary"]
+    assert "\n" not in review["summary"]
+    assert "현재 9대의 서버가 위험 상태입니다." in review["summary"]
+    assert "apache-web-02" in review["summary"]
+
+
 def test_review_fleet_disabled_keeps_rule_results():
     assert review_fleet({"kind": "fleet", "facts": {"headline": "위험 서버 1대입니다."}}) == {}
 
