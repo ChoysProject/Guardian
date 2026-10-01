@@ -203,6 +203,22 @@ def _dify_review_input(payload: dict[str, Any], system: str = RESOURCE_SYSTEM) -
     }
 
 
+def _strip_markdown(text: str) -> str:
+    """LLM이 지시를 어기고 마크다운을 섞어 보내도 화면엔 평문만 남긴다."""
+    body = str(text or "")
+    body = re.sub(r"```.*?```", " ", body, flags=re.S)  # 코드 블록 전체 제거
+    body = re.sub(r"`([^`]*)`", r"\1", body)  # 인라인 코드 백틱만 벗김
+    body = re.sub(r"^\s{0,3}#{1,6}\s*", "", body, flags=re.M)  # ### 제목
+    body = re.sub(r"(\*\*|__)(.+?)\1", r"\2", body)  # **굵게**, __굵게__
+    body = re.sub(r"(?<!\w)(\*|_)(.+?)\1(?!\w)", r"\2", body)  # *기울임*, _기울임_
+    body = re.sub(r"^\s*[-*+]\s+", "", body, flags=re.M)  # - 불릿, * 불릿
+    body = re.sub(r"^\s*\d+[.)]\s+", "", body, flags=re.M)  # 1. 번호 목록
+    body = re.sub(r"^\s*>\s*", "", body, flags=re.M)  # > 인용
+    body = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", body)  # [문구](url)
+    body = re.sub(r"[#*_`]+", "", body)  # 남은 마크다운 기호 청소
+    return body
+
+
 def _normalize_ai_text(text: str) -> str:
     body = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     body = re.sub(
@@ -211,9 +227,9 @@ def _normalize_ai_text(text: str) -> str:
         body,
         flags=re.I,
     )
-    if "\n" not in body and ("###" in body or "**" in body):
-        body = re.sub(r"\s*(#{2,4}\s+)", r"\n\n\1", body)
-        body = re.sub(r"\s+-\s+", "\n- ", body)
+    body = _strip_markdown(body)
+    # summary 는 한 문단으로 이어지는 브리핑이라, 줄바꿈까지 포함해 공백 하나로 합친다.
+    body = re.sub(r"\s+", " ", body)
     return body.strip()
 
 
@@ -243,10 +259,17 @@ def _parse_review(text: str) -> dict[str, Any]:
         return {"summary": _normalize_ai_text(text)}
     def _lines(value: Any) -> list[str]:
         if isinstance(value, list):
-            return [str(item).strip() for item in value if str(item).strip()][:3]
-        if isinstance(value, str) and value.strip():
-            return [value.strip()]
-        return []
+            raw = [str(item) for item in value if str(item).strip()][:3]
+        elif isinstance(value, str) and value.strip():
+            raw = [value]
+        else:
+            raw = []
+        cleaned = []
+        for item in raw:
+            text = re.sub(r"\s+", " ", _strip_markdown(item)).strip()
+            if text:
+                cleaned.append(text)
+        return cleaned
 
     return {
         "summary": _normalize_ai_text(

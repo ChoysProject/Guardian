@@ -312,8 +312,11 @@ def test_ai_review_disabled_and_parsing():
     assert parsed["actions"] == []
     assert _parse_review("그냥 문장")["summary"] == "그냥 문장"
     markdown = _parse_review("Certainly. ### CPU 사용률 **75%** ### 메모리 **82%**")
-    assert "### CPU" in markdown["summary"]
-    assert "\n" in markdown["summary"]
+    assert "#" not in markdown["summary"]
+    assert "*" not in markdown["summary"]
+    assert "\n" not in markdown["summary"]
+    assert "CPU 사용률 75%" in markdown["summary"]
+    assert "메모리 82%" in markdown["summary"]
     assert not markdown["summary"].lower().startswith("certainly")
 
 
