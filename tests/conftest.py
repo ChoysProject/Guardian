@@ -19,7 +19,7 @@ if _stage4.is_dir():
 _config.write_text(
     f"""
 app:
-  name: Guardian
+  name: GoodMorningCheck
   host: 127.0.0.1
   port: 8080
   data_dir: {_tmp.as_posix()}

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class AppSettings(BaseModel):
-    name: str = "Guardian"
+    name: str = "GoodMorningCheck"
     host: str = "127.0.0.1"
     port: int = 8080
     data_dir: str = "data"
@@ -21,7 +21,7 @@ class AppSettings(BaseModel):
 
 
 class DatabaseSettings(BaseModel):
-    url: str = "sqlite:///data/guardian.db"
+    url: str = "sqlite:///data/goodmorningcheck.db"
 
 
 class AuthSettings(BaseModel):
@@ -52,7 +52,7 @@ class DifySettings(BaseModel):
     base_url: str = "http://dify.internal/v1"
     api_key: str = ""
     workflow_id: str = ""
-    user: str = "guardian"
+    user: str = "goodmorningcheck"
     timeout_seconds: int = 30
     input_key: str = "findings_json"
 

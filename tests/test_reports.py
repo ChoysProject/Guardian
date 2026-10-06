@@ -45,7 +45,7 @@ def test_report_includes_volume_without_findings():
     assert "<th>AI</th>" not in result["html"]
 
 
-def test_default_log_report_title_is_guardian():
+def test_default_log_report_title_is_goodmorningcheck():
     ctx = PluginContext(
         server_name="app-1",
         host="app-1",
@@ -56,9 +56,7 @@ def test_default_log_report_title_is_guardian():
         findings=[],
     )
     result = render_standard_report(ctx)
-    assert "Guardian 로그 분석 보고서" in result["title"]
-    assert "Goodmorning" not in result["title"]
-    assert "Goodmorning" not in result["html"]
+    assert "GoodMorningCheck 로그 분석 보고서" in result["title"]
 
 
 def test_log_report_includes_ai_review():

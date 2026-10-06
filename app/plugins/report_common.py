@@ -10,7 +10,7 @@ def render_standard_report(ctx, extra_sections: list[tuple[str, str]] | None = N
     cfg = ctx.config or {}
     stats = cfg.get("stats") if isinstance(cfg.get("stats"), dict) else {}
     server_name = cfg.get("server_name") or ctx.server_name
-    title = cfg.get("title") or "Guardian 로그 분석 보고서"
+    title = cfg.get("title") or "GoodMorningCheck 로그 분석 보고서"
     if server_name and server_name not in ("*", "", "-") and "{server}" in title:
         title = title.replace("{server}", str(server_name))
     elif (

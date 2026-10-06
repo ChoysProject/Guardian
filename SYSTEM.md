@@ -1,4 +1,4 @@
-# Guardian 시스템 개요
+# GoodMorningCheck 시스템 개요
 
 개인·소규모 운영자가 여러 서버에 앱·웹을 띄울 때, 로그와 성능을 한곳에서 보고 어디부터 볼지 빨리 정하기 위한 감시 시스템입니다.
 
@@ -12,7 +12,7 @@
 
 상용 APM·로그 플랫폼은 팀 단위 관제에 맞춰져 있습니다. 집이나 소규모 환경에서 서버를 여러 대 돌리면, 접속해서 로그를 열고 `top` 을 보는 일이 반복됩니다.
 
-Guardian은 그 일을 한 화면으로 모읍니다.
+GoodMorningCheck는 그 일을 한 화면으로 모읍니다.
 
 - **대상**: 개인·소규모 운영자. 여러 호스트에 웹·앱·DB를 나눠 둔 경우.
 - **목적**: 지금 위험한 서버가 어디인지, 로그 쪽인지 리소스 쪽인지 먼저 본다.
@@ -83,7 +83,7 @@ Guardian은 그 일을 한 화면으로 모읍니다.
 
 1. 로그 서버와 **같은 이름**을 쓰면 현황에서 한 세트로 묶입니다.
 2. 접속 정보와 수집 스크립트, 수집 경로를 넣습니다.
-3. Guardian이 SSH로 붙어 스크립트를 돌리거나, 화면에서 일자별 JSON을 직접 넣을 수 있습니다.
+3. GoodMorningCheck가 SSH로 붙어 스크립트를 돌리거나, 화면에서 일자별 JSON을 직접 넣을 수 있습니다.
 4. 결과는 `DailyData/YYYY-MM-DD.json` 형태입니다. 박스에는 CPU · 메모리 · 디스크만 먼저 보입니다.
 
 행의 **수집** 또는 **전체 수집하기**는 로그 수집과 별개입니다. 한 대가 실패해도 나머지는 계속 모읍니다.
@@ -147,7 +147,7 @@ Guardian은 그 일을 한 화면으로 모읍니다.
 | 위치 | 내용 |
 | --- | --- |
 | `config.yaml` | 기동 설정. 예시는 `config.example.yaml`. 다른 파일은 `GUARDIAN_CONFIG` |
-| `data/guardian.db` | SQLite. 서버, 징후, 보고서 목록 |
+| `data/goodmorningcheck.db` | SQLite. 서버, 징후, 보고서 목록 |
 | `data/resources/{서버}/{날짜}.json` | 리소스 일자별 원자료 |
 | `data/reports/` | 보고서 HTML · Markdown |
 | `data/overview_review.json` | 감시 현황 AI 전체 총평 캐시 |
@@ -161,7 +161,7 @@ Guardian은 그 일을 한 화면으로 모읍니다.
 | 구분 | 내용 |
 | --- | --- |
 | 화면 | FastAPI + Jinja2, 기본 `http://127.0.0.1:8080` |
-| 저장 | SQLite (`data/guardian.db`). 공용이면 PostgreSQL URL로 바꿀 수 있음 |
+| 저장 | SQLite (`data/goodmorningcheck.db`). 공용이면 PostgreSQL URL로 바꿀 수 있음 |
 | 수집 | local 파일 또는 Paramiko SSH, 증분 커서 |
 | 스케줄 | APScheduler (수집 주기 + 일일 보고서) |
 | 로그 플러그인 | 1단계 공통 → 2단계 세부 → 3단계 보고서 |

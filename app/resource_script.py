@@ -83,7 +83,7 @@ CATEGORIES: list[dict[str, Any]] = [
 ]
 
 HEADER = r'''#!/bin/bash
-# Guardian 수집 스크립트. 원격 권한은 건드리지 않는다.
+# GoodMorningCheck 수집 스크립트. 원격 권한은 건드리지 않는다.
 # 모듈이 없거나 명령이 호환되지 않으면 그 항목만 건너뛰고, JSON 한 줄은 무조건 찍는다.
 # 같은 JSON 을 OUT_DIR/날짜.json 에도 남긴다. 수집 경로가 비면 스크립트 옆 DailyData/ 이다.
 # {{server}} / {{instances}} / {{date}} 는 돌릴 때 서버 값으로 채워진다.

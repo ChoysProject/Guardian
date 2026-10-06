@@ -1,7 +1,7 @@
 #!/bin/bash
 # 각 서버에 두고 cron 으로 매시간 한 번 실행하세요.
 # 실행할 때마다 그 시각 표본을 쌓고, 오늘 자 JSON 파일을 다시 만듭니다.
-# 그 JSON 을 Guardian > 서버 > 서버 리소스 분석 화면에 넣으면
+# 그 JSON 을 GoodMorningCheck > 서버 > 서버 리소스 분석 화면에 넣으면
 # 보고서 > 리소스 분석 보고서 에서 일주일 추이와 AI 총평이 나옵니다.
 #
 # 예) 0 * * * * SERVER_NAME=eai-01 INSTANCES="was mq" /opt/guardian/sample_resource.sh

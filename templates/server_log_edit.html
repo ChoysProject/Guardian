@@ -43,7 +43,7 @@
           <label class="small mb-1" for="collector_type">수집기</label>
           <select class="form-select" id="collector_type" name="collector_type" data-picker>
             <option value="ssh" data-desc="원격 서버에 붙어서 로그를 읽습니다" {% if server.collector_type == "ssh" %}selected{% endif %}>ssh</option>
-            <option value="local" data-desc="Guardian이 도는 이 서버에서 읽습니다" {% if server.collector_type == "local" %}selected{% endif %}>local</option>
+            <option value="local" data-desc="GoodMorningCheck가 도는 이 서버에서 읽습니다" {% if server.collector_type == "local" %}selected{% endif %}>local</option>
           </select>
         </div>
         <div class="col-md-4 mb-3">
@@ -85,7 +85,7 @@
         <div class="col-12 mb-3">
           <label class="small mb-1" for="log_paths">로그 경로 (줄바꿈 또는 쉼표)</label>
           <textarea class="form-control" id="log_paths" name="log_paths" rows="4" placeholder="읽을 로그 파일 경로. 줄마다 하나. 일자·시간 패턴과 * 사용 가능">{{ log_paths_text }}</textarea>
-          <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. <code>~</code> 또는 <code>$HOME</code> 은 접속 계정 홈입니다. SSH는 SFTP로 읽기 때문에 <code>~/logs/app*</code> 처럼 쓰면 홈을 절대 경로로 펼칩니다. 리눅스에서 시험할 때는 비워 두고 수정 화면의 "시험 로그 넣기"를 누르면 <code>$HOME/GuardianTestLogs/guardian-test.log</code> 에 임시 로그를 씁니다.</div>
+          <div class="form-text">일자·시간 패턴과 <code>*</code> 를 쓰면 최근 {{ collect_lookback_hours }}시간만 읽습니다. <code>~</code> 또는 <code>$HOME</code> 은 접속 계정 홈입니다. SSH는 SFTP로 읽기 때문에 <code>~/logs/app*</code> 처럼 쓰면 홈을 절대 경로로 펼칩니다. 리눅스에서 시험할 때는 비워 두고 수정 화면의 "시험 로그 넣기"를 누르면 <code>$HOME/GoodMorningCheckTestLogs/guardian-test.log</code> 에 임시 로그를 씁니다.</div>
         </div>
         {% set pick_id = "edit-s1" %}
         {% set pick_title = "1단계 공통 플러그인" %}

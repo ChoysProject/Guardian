@@ -26,7 +26,7 @@ from app.charts import chart_summary
 from app.cursors import PAGE_SIZE, migrate_from_db, page_cursors
 from app.pipeline.reports import generate_reports, group_log_report_rows
 from app.overview import build_overview, review_payload, save_overview_review
-from app.ai.gateway import review_fleet
+from app.ai.gateway import review_fleet, take_ai_error
 from app.resources import (
     SAMPLE_JSON,
     delete_snapshot,
@@ -298,6 +298,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 
 @app.post("/overview/review")
 def overview_review(db: Session = Depends(get_db)):
+    take_ai_error()
     servers = db.query(Server).order_by(Server.name).all()
     reports = db.query(Report).order_by(Report.created_at.desc()).all()
     resource_reports = [item for item in reports if is_resource_plugin(item.plugin)]
@@ -312,9 +313,10 @@ def overview_review(db: Session = Depends(get_db)):
     log_groups = group_log_report_rows(log_reports, _log_servers(db), db.query(Finding).all())
     overview = build_overview(log_groups, report_groups)
     review = review_fleet(review_payload(overview))
-    if review.get("summary") or review.get("risks") or review.get("actions"):
+    saved = bool(review.get("summary") or review.get("risks") or review.get("actions"))
+    if saved:
         save_overview_review(review)
-    return RedirectResponse("/", status_code=303)
+    return _redirect_after_ai("/", notice="AI 총평을 붙였습니다." if saved else "")
 
 
 @app.get("/servers")
@@ -1199,6 +1201,17 @@ def _db_busy_redirect(path: str) -> RedirectResponse:
     )
 
 
+def _redirect_after_ai(path: str, *, notice: str = "") -> RedirectResponse:
+    err = take_ai_error()
+    if err:
+        sep = "&" if "?" in path else "?"
+        return RedirectResponse(f"{path}{sep}error={quote(err)}", status_code=303)
+    if notice:
+        sep = "&" if "?" in path else "?"
+        return RedirectResponse(f"{path}{sep}notice={quote(notice)}", status_code=303)
+    return RedirectResponse(path, status_code=303)
+
+
 @app.post("/servers/logs/collect-all")
 def collect_all_logs(db: Session = Depends(get_db)):
     try:
@@ -1391,13 +1404,14 @@ def reports_generate(
     servers: list[str] = Form(default=[]),
 ):
     names = [item for item in servers if item] if selecting else None
+    take_ai_error()
     try:
         generate_reports(db, server_names=names)
     except OperationalError as exc:
         if "locked" not in str(exc).lower():
             raise
         return _db_busy_redirect("/reports")
-    return RedirectResponse("/reports", status_code=303)
+    return _redirect_after_ai("/reports")
 
 
 @app.get("/reports/resources", response_class=HTMLResponse)
@@ -1435,13 +1449,14 @@ def reports_resources_generate(
     servers: list[str] = Form(default=[]),
 ):
     names = [item for item in servers if item] if selecting else None
+    take_ai_error()
     try:
         generate_resource_reports(db, server_names=names, days=7)
     except OperationalError as exc:
         if "locked" not in str(exc).lower():
             raise
         return _db_busy_redirect("/reports/resources")
-    return RedirectResponse("/reports/resources", status_code=303)
+    return _redirect_after_ai("/reports/resources")
 
 
 def _remove_report(db: Session, item: Report) -> None:

@@ -12,7 +12,8 @@ from app.config import settings
 
 RESOURCE_PLUGIN = "resource_report"
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-SERVER_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+# 영문·숫자·한글 등 글자와 - _ . 만. 경로 구분자와 공백은 앞에서 _ 로 바꿉니다.
+SERVER_RE = re.compile(r"^[\w.-]+$", re.UNICODE)
 OK_VALUES = {"ok", "up", "running", "true", "1", "yes", "on"}
 # 셸이 숫자 자리를 비워 두거나 df 가 - 를 찍은 경우: "count": } / "inode_pct": -
 _EMPTY_JSON_VALUE = re.compile(r'":\s*([,}\]])')
@@ -137,9 +138,13 @@ def group_resource_report_rows(
 
 
 def _safe_server(name: str) -> str:
-    text = re.sub(r"[^\w.-]+", "_", (name or "").strip()).strip("._")
+    text = re.sub(r"[^\w.-]+", "_", (name or "").strip(), flags=re.UNICODE).strip("._")
     if not text or not SERVER_RE.fullmatch(text):
-        raise ValueError("서버 이름이 올바르지 않습니다.")
+        shown = (name or "").strip() or "(비어 있음)"
+        raise ValueError(
+            f"서버 이름이 올바르지 않습니다: {shown}. "
+            "영문·숫자·한글과 - _ . 만 사용할 수 있습니다."
+        )
     return text
 
 
@@ -369,7 +374,10 @@ def normalize_snapshot(
     fallback_server: str = "",
     fallback_date: str = "",
 ) -> dict[str, Any]:
-    server = str(raw.get("server") or raw.get("host") or fallback_server).strip()
+    # 데이터 넣기(등록한 서버에 묶기)는 JSON 안 호스트 이름보다 등록 이름을 씁니다.
+    server = (fallback_server or "").strip() or str(
+        raw.get("server") or raw.get("host") or ""
+    ).strip()
     date = str(raw.get("date") or raw.get("day") or fallback_date).strip()
     cpu_raw = raw.get("cpu")
     mem_raw = raw.get("mem") if "mem" in raw else raw.get("memory")
