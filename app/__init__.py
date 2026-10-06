@@ -1,4 +1,4 @@
-"""Guardian application package."""
+"""GoodMorningCheck application package."""
 
 from pathlib import Path
 import sys

@@ -4,9 +4,9 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 $Stamp = Get-Date -Format "yyyyMMdd-HHmm"
-$Stage = Join-Path $env:TEMP "guardian-import-$Stamp"
+$Stage = Join-Path $env:TEMP "goodmorningcheck-import-$Stamp"
 $OutDir = Join-Path $Root "dist"
-$Zip = Join-Path $OutDir "guardian-import-$Stamp.zip"
+$Zip = Join-Path $OutDir "goodmorningcheck-import-$Stamp.zip"
 $Lib = Join-Path $Stage "lib"
 
 if (Test-Path $Stage) {

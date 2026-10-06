@@ -1,4 +1,4 @@
-# Guardian
+# GoodMorningCheck
 
 로컬에 Python만 있으면 기동하는 웹 서비스입니다. 서버 로그 이상징후와 리소스·성능을 모으고, 지정 시각에 보고서를 만듭니다.
 
@@ -32,7 +32,7 @@ Linux/macOS는 `scripts/run.sh`, Windows는 `scripts/run.ps1` 로도 됩니다. 
 | --- | --- |
 | 감시 현황 | 등록한 로그·리소스 서버를 한눈에 보고, 켜 두면 AI 전체 총평을 한 번 붙임 |
 | 로그 | 대상 서버에서 증분 수집 → 규칙 플러그인으로 징후(Finding) → 일일·서버별 보고서 |
-| 리소스 및 성능 | 대상 서버에서 셸 스크립트로 일자별 JSON → Guardian에 넣기 → 서버별 추이 보고서 |
+| 리소스 및 성능 | 대상 서버에서 셸 스크립트로 일자별 JSON → GoodMorningCheck에 넣기 → 서버별 추이 보고서 |
 
 탐지의 정답은 규칙/플러그인입니다. AI는 추린 결과만 해석하며, 원본 로그 전체를 넣지 않습니다. AI가 꺼져 있거나 실패해도 규칙 보고서는 그대로 나옵니다.
 
@@ -51,12 +51,12 @@ Linux/macOS는 `scripts/run.sh`, Windows는 `scripts/run.ps1` 로도 됩니다. 
 
 | 위치 | 내용 |
 | --- | --- |
-| `data/guardian.db` | SQLite. 서버 등록, 징후, 보고서 목록 등 시스템 데이터 |
+| `data/goodmorningcheck.db` | SQLite. 서버 등록, 징후, 보고서 목록 등 시스템 데이터 |
 | `data/resources/{서버}/{날짜}.json` | 리소스 일자별 원자료 |
 | `data/reports/` | 보고서 HTML · Markdown 본문 |
 | `data/overview_review.json` | 감시 현황 AI 전체 총평 |
 
-SQLite는 별도 DB 서버가 없습니다. Guardian을 꺼도 파일은 남고, 다시 켜면 그대로 읽습니다.
+SQLite는 별도 DB 서버가 없습니다. GoodMorningCheck를 꺼도 파일은 남고, 다시 켜면 그대로 읽습니다.
 
 ## 설정
 
@@ -65,7 +65,7 @@ SQLite는 별도 DB 서버가 없습니다. Guardian을 꺼도 파일은 남고,
 로컬 기본값:
 
 - `app.host: 127.0.0.1`
-- `database.url: sqlite:///data/guardian.db`
+- `database.url: sqlite:///data/goodmorningcheck.db`
 - `auth.enabled: false`
 - `openai.enabled` / `dify.enabled` 로 AI 경로 선택
 
@@ -92,7 +92,7 @@ Windows 시작 시 기동: `scripts/install-windows-service.ps1`
 .\scripts\pack-import.ps1
 ```
 
-`dist/guardian-import-날짜.zip` 에 코드와 **이미 풀린 `lib/`** 가 들어갑니다. `data/`, `.venv`, `config.yaml` 은 넣지 않습니다.
+`dist/goodmorningcheck-import-날짜.zip` 에 코드와 **이미 풀린 `lib/`** 가 들어갑니다. `data/`, `.venv`, `config.yaml` 은 넣지 않습니다.
 
 이 개발 PC가 3.10 이어도, pip 가 3.13 Windows 휠만 받아 `lib/` 에 풉니다. 실패하면 안쪽과 같은 3.13 Windows 에서 스크립트를 다시 돌리면 됩니다.
 

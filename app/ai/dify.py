@@ -52,6 +52,8 @@ def annotate_findings(findings: list[dict[str, Any]]) -> list[str]:
 
 
 def _call_dify(payload: list[dict[str, Any]] | dict[str, Any]) -> list[str]:
+    if not (settings.dify.api_key or "").strip():
+        raise RuntimeError("Dify API 키가 비어 있습니다. config.yaml 의 dify.api_key 를 넣으세요.")
     url = settings.dify.base_url.rstrip("/") + "/workflows/run"
     expected = len(payload) if isinstance(payload, list) else 1
     body = {
@@ -65,10 +67,22 @@ def _call_dify(payload: list[dict[str, Any]] | dict[str, Any]) -> list[str]:
         "Authorization": f"Bearer {settings.dify.api_key}",
         "Content-Type": "application/json",
     }
-    with httpx.Client(timeout=settings.dify.timeout_seconds) as client:
+    with httpx.Client(timeout=settings.dify.timeout_seconds, follow_redirects=False) as client:
         response = client.post(url, json=body, headers=headers)
-        response.raise_for_status()
+    if 300 <= response.status_code < 400:
+        location = response.headers.get("location") or ""
+        raise RuntimeError(
+            f"Dify가 {response.status_code} See Other 로 다른 주소로 넘겼습니다. "
+            "워크플로 API(/v1/workflows/run)가 아니라 로그인·HTTPS 쪽으로 간 경우가 많습니다. "
+            f"base_url={settings.dify.base_url} Location={location}".strip()
+        )
+    if response.status_code >= 400:
+        detail = (response.text or "").strip().replace("\n", " ")[:240]
+        raise RuntimeError(f"Dify HTTP {response.status_code}: {detail or '응답이 비었습니다.'}")
+    try:
         data = response.json()
+    except ValueError as exc:
+        raise RuntimeError("Dify 응답이 JSON이 아닙니다. base_url 이 /v1 인지 확인하세요.") from exc
     return _extract_comments(data, expected=expected)
 
 

@@ -25,7 +25,7 @@
   <div class="collapse {% if open_add %}show{% endif %}" id="server-add">
     <div class="card-body border-bottom">
       <p class="small text-muted mb-3">
-        바라볼 서버의 접속 정보를 넣으면 Guardian이 직접 붙어 수집 스크립트를 돌립니다.
+        바라볼 서버의 접속 정보를 넣으면 GoodMorningCheck가 직접 붙어 수집 스크립트를 돌립니다.
         비밀번호는 암호화해서 보관하고, 개인키는 올리면 서버 안에만 둡니다.
       </p>
       <form method="post" action="/servers/resources/new" enctype="multipart/form-data" id="resource-server-form">
@@ -46,7 +46,7 @@
             <label class="small mb-1" for="collector_type">수집기</label>
             <select class="form-select" id="collector_type" name="collector_type" data-picker>
               <option value="ssh" data-desc="원격 서버에 붙어서 수집">ssh</option>
-              <option value="local" data-desc="Guardian이 도는 이 서버에서 수집">local</option>
+              <option value="local" data-desc="GoodMorningCheck가 도는 이 서버에서 수집">local</option>
             </select>
           </div>
           <div class="col-md-4 mb-3">

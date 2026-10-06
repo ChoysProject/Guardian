@@ -29,6 +29,6 @@ def test_write_local_test_log_appends_and_attaches(tmp_path, monkeypatch):
     first = write_local_test_log(server, "line-one\n")
     second = write_local_test_log(server, "line-two\n")
     assert first == second
-    body = (tmp_path / "GuardianTestLogs" / "seed-local" / "guardian-test.log").read_text(encoding="utf-8")
+    body = (tmp_path / "GoodMorningCheckTestLogs" / "seed-local" / "guardian-test.log").read_text(encoding="utf-8")
     assert "line-one" in body and "line-two" in body
     assert first in parse_json_list(server.log_paths)

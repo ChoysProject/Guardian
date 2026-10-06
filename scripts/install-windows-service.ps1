@@ -1,6 +1,6 @@
 #Requires -RunAsAdministrator
 param(
-    [string]$TaskName = "Guardian",
+    [string]$TaskName = "GoodMorningCheck",
     [string]$Python = "",
     [string]$RepoRoot = ""
 )

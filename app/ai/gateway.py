@@ -12,6 +12,21 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+_last_error = ""
+
+
+def take_ai_error() -> str:
+    """직전에 실패한 총평 사유. 한 번 읽으면 지웁니다."""
+    global _last_error
+    text = _last_error
+    _last_error = ""
+    return text
+
+
+def _set_ai_error(text: str) -> None:
+    global _last_error
+    _last_error = re.sub(r"\s+", " ", str(text or "")).strip()[:400]
+
 
 def annotate_findings(findings: list[dict[str, Any]]) -> list[str]:
     """추린 징후만 LLM에 보낸다. 실패하면 규칙 결과만 유지한다."""
@@ -101,14 +116,19 @@ def _review_payload(
             comments = _call_dify(_dify_review_input(payload, system))
             text = "\n".join(item for item in comments if item).strip()
             if not text:
+                _set_ai_error(
+                    "Dify가 빈 답을 돌려줬습니다. 워크플로 출력 변수(text/output/answer/summary)와 "
+                    f"입력 변수({settings.dify.input_key})를 확인하세요."
+                )
                 return {}
             parsed = _parse_review(text)
             if parsed.get("summary") or parsed.get("risks") or parsed.get("actions"):
                 return parsed
             return {"summary": text}
         return {}
-    except Exception:
+    except Exception as exc:
         logger.exception("%s — 규칙 결과만 유지합니다.", fail_log)
+        _set_ai_error(f"{fail_log}: {exc}")
         return {}
 
 

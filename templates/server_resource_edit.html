@@ -40,7 +40,7 @@
           <label class="small mb-1" for="collector_type">수집기</label>
           <select class="form-select" id="collector_type" name="collector_type" data-picker>
             <option value="ssh" data-desc="원격 서버에 붙어서 수집" {% if server.collector_type == "ssh" %}selected{% endif %}>ssh</option>
-            <option value="local" data-desc="Guardian이 도는 이 서버에서 수집" {% if server.collector_type == "local" %}selected{% endif %}>local</option>
+            <option value="local" data-desc="GoodMorningCheck가 도는 이 서버에서 수집" {% if server.collector_type == "local" %}selected{% endif %}>local</option>
           </select>
         </div>
         <div class="col-md-4 mb-3">

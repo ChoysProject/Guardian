@@ -13,9 +13,8 @@ def test_health_and_dashboard_and_pipeline():
 
         home = client.get("/")
         assert home.status_code == 200
-        assert "Guardian" in home.text
+        assert "GoodMorningCheck" in home.text
         assert "guardian-brand" in home.text
-        assert "Goodmorning" not in home.text
         assert "감시 현황" in home.text
         assert "전체 현황" in home.text
         assert "전체 수집" not in home.text
@@ -287,7 +286,7 @@ def test_health_and_dashboard_and_pipeline():
         log_id = str(created.url).rstrip("/").rsplit("/", 2)[-2]
         seeded = client.post(f"/servers/logs/{log_id}/seed-logs", follow_redirects=True)
         assert seeded.status_code == 200
-        assert "GuardianTestLogs" in seeded.text or "시험 로그" in seeded.text
+        assert "GoodMorningCheckTestLogs" in seeded.text or "시험 로그" in seeded.text
         assert "disk.full" in seeded.text or "auth.failures" in seeded.text or "stage1." in seeded.text
         plugins_page = client.get("/plugins/logs")
         assert plugins_page.status_code == 200

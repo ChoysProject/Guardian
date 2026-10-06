@@ -52,6 +52,52 @@ def test_parse_snapshot_variants():
     assert names["mq"] is False
 
 
+def test_parse_payload_accepts_korean_server_name():
+    rows = parse_payload(
+        json.dumps(
+            {
+                "server": "EAI운영",
+                "date": "2026-10-06",
+                "cpu": {"usage_pct": 11},
+                "mem": {"used_pct": 22},
+                "disk": [],
+            }
+        )
+    )
+    assert rows[0]["server"] == "EAI운영"
+
+
+def test_parse_payload_bind_server_overrides_json_hostname():
+    rows = parse_payload(
+        json.dumps(
+            {
+                "server": "prd-was01.local",
+                "date": "2026-10-06",
+                "cpu": {"usage_pct": 11},
+                "mem": {"used_pct": 22},
+                "disk": [],
+            }
+        ),
+        fallback_server="EAI운영",
+    )
+    assert rows[0]["server"] == "EAI운영"
+
+
+def test_parse_payload_rejects_empty_server_name():
+    with pytest.raises(ValueError, match="서버 이름이 올바르지 않습니다"):
+        parse_payload(
+            json.dumps(
+                {
+                    "server": "***",
+                    "date": "2026-10-06",
+                    "cpu": {"usage_pct": 1},
+                    "mem": {"used_pct": 2},
+                    "disk": [],
+                }
+            )
+        )
+
+
 def test_parse_instance_start_and_problem():
     rows = parse_payload(
         json.dumps(
@@ -887,6 +933,30 @@ def test_connect_many_counts(monkeypatch):
             assert "usage_pct" in edit.text
         finally:
             plugin_editor.delete_plugin(4, "tmp_eai_resource")
+
+
+def test_resource_upload_bind_server_accepts_korean_and_json_hostname(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.resources.today_stamp", lambda when=None: "2026-10-06")
+    payload = {
+        "server": "prd-was01.internal",
+        "date": "2026-10-06",
+        "cpu": {"usage_pct": 12},
+        "mem": {"used_pct": 34},
+        "disk": [{"mount": "/", "used_pct": 50}],
+    }
+    upload = tmp_path / "2026-10-06.json"
+    upload.write_text(json.dumps(payload), encoding="utf-8")
+    with TestClient(app) as client:
+        posted = client.post(
+            "/servers/resources",
+            data={"bind_server": "EAI운영", "date": "2026-10-06"},
+            files={"files": ("2026-10-06.json", upload.read_bytes(), "application/json")},
+            follow_redirects=True,
+        )
+        assert posted.status_code == 200
+        assert "서버 이름이 올바르지 않습니다" not in posted.text
+        assert '"saved": 1' in posted.text
+        assert "EAI운영" in posted.text
 
 
 def test_resource_upload_and_weekly_report(monkeypatch):

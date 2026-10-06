@@ -9,7 +9,7 @@ from app.db import dump_json, parse_json_list
 from app.demo_logs import extra_lines_for
 from app.models import Server
 
-TEST_DIR_NAME = "GuardianTestLogs"
+TEST_DIR_NAME = "GoodMorningCheckTestLogs"
 TEST_FILE_NAME = "guardian-test.log"
 
 

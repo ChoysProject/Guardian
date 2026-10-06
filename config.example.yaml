@@ -1,8 +1,8 @@
-# Guardian 설정 — 이 파일을 config.yaml 로 복사해 사용합니다.
+# GoodMorningCheck 설정 — 이 파일을 config.yaml 로 복사해 사용합니다.
 # 사내 서버로 옮길 때는 host / auth / database.url 만 바꾸면 됩니다.
 
 app:
-  name: Guardian
+  name: GoodMorningCheck
   host: 127.0.0.1          # 사내 공용이면 0.0.0.0
   port: 8080
   data_dir: data
@@ -10,8 +10,8 @@ app:
   seed_demo: false         # true면 기동 시 데모 서버·샘플 로그를 넣습니다. 반입본은 false
 
 database:
-  # 개인 PC: sqlite. 공용 서버: postgresql+psycopg://user:pass@host/guardian
-  url: sqlite:///data/guardian.db
+  # 개인 PC: sqlite. 공용 서버: postgresql+psycopg://user:pass@host/goodmorningcheck
+  url: sqlite:///data/goodmorningcheck.db
 
 auth:
   enabled: false           # 사내 서버 이전 시 true
@@ -38,7 +38,7 @@ dify:
   base_url: http://127.0.0.1/v1 # ← 내부 Dify IP(또는 호스트)만 수정
   api_key: ""
   workflow_id: ""
-  user: guardian
+  user: goodmorningcheck
   timeout_seconds: 30
   input_key: findings_json
 

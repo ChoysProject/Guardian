@@ -201,3 +201,73 @@ def test_review_fleet_uses_dify_facts(monkeypatch):
     assert seen["payload"]["task"] == "fleet_review"
     assert seen["payload"]["facts"]["log_danger"] == ["spring-prod-01"]
     assert review["summary"] == "웹과 DB가 같이 위험합니다."
+
+
+def test_call_dify_requires_api_key(monkeypatch):
+    from app.ai.dify import _call_dify
+
+    monkeypatch.setattr(settings.dify, "api_key", "")
+    try:
+        _call_dify({"task": "fleet_review"})
+    except RuntimeError as exc:
+        assert "API 키" in str(exc)
+    else:
+        raise AssertionError("키가 없으면 실패해야 합니다")
+
+
+def test_call_dify_rejects_see_other(monkeypatch):
+    from app.ai.dify import _call_dify
+
+    monkeypatch.setattr(settings.dify, "api_key", "app-test")
+    monkeypatch.setattr(settings.dify, "base_url", "http://dify.internal/v1")
+
+    class FakeResp:
+        status_code = 303
+        headers = {"location": "http://dify.internal/signin"}
+        text = "See Other"
+
+        def json(self):
+            raise ValueError("not json")
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, *args, **kwargs):
+            return FakeResp()
+
+    monkeypatch.setattr("app.ai.dify.httpx.Client", FakeClient)
+    try:
+        _call_dify({"task": "fleet_review"})
+    except RuntimeError as exc:
+        assert "303" in str(exc)
+        assert "signin" in str(exc)
+    else:
+        raise AssertionError("303은 총평 실패여야 합니다")
+
+
+def test_overview_review_toasts_dify_error(monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.ai import gateway
+    from app.main import app
+
+    monkeypatch.setattr(gateway.settings.openai, "enabled", False)
+    monkeypatch.setattr(gateway.settings.dify, "enabled", True)
+    monkeypatch.setattr(gateway.settings.dify, "api_key", "")
+
+    def boom(_payload):
+        raise RuntimeError("Dify가 303 See Other 로 다른 주소로 넘겼습니다.")
+
+    monkeypatch.setattr("app.ai.gateway._call_dify", boom)
+    with TestClient(app) as client:
+        reviewed = client.post("/overview/review", follow_redirects=False)
+        assert reviewed.status_code == 303
+        location = reviewed.headers.get("location", "")
+        assert "error=" in location
+        assert "303" in location or "Dify" in location
